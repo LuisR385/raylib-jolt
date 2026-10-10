@@ -36,23 +36,30 @@ namespace RayJolt{
 
 		//=====JOLT->RAYLIB================================
 
-
-		Vector3 ToRaylibVector3(const JPH::RVec3& value) {
-			return Vector3{ value.GetX(),value.GetY(),value.GetZ() };
+		//NOTE : maybe dont use
+		inline ::Vector2 ToRaylibVector2(const JPH::RVec3Arg& value) {
+			return { value.GetX(),value.GetY() };
 		}
 
-		Vector3 ToRaylibVector3Array(const JPH::RVec3Arg& value) {
-			return Vector3{ value.GetX(),value.GetY(),value.GetZ() };
+		inline Vector3 ToRaylibVector3(const JPH::Vec3& value) {
+			return { value.GetX(), value.GetY(), value.GetZ() };
 		}
 
-		//maybe dont use
-		::Vector2 ToRaylibVector2(const JPH::RVec3Arg& value) {
-			return Vector2{ value.GetX(),value.GetY() };
+		inline Vector3 ToRaylibRVector3(const JPH::RVec3& value) {
+			return { static_cast<float>(value.GetX()), static_cast<float>(value.GetY()), static_cast<float>(value.GetZ()) };
+		}
+
+		inline Vector4 ToRaylibVector4(const JPH::Vec4& value) {
+			return { value.GetX(), value.GetY(), value.GetZ(), value.GetW() };
+		}
+
+		inline Quaternion ToRaylibQuaternion(const JPH::Quat& value) {
+			return { value.GetX(), value.GetY(), value.GetZ(), value.GetW() };
 		}
 
 		//NOTE : Mat44 is use Transform.
 
-		::Matrix ToRaylibMatrix(const JPH::Mat44& inJoltMat)
+		inline ::Matrix ToRaylibMatrix(const JPH::Mat44& inJoltMat)
 		{
 			::Matrix outMat{};
 
@@ -85,7 +92,7 @@ namespace RayJolt{
 		}
 
 
-		::Matrix ToRaylibRMatrix(const JPH::RMat44& inJoltMat)
+		inline ::Matrix ToRaylibRMatrix(const JPH::RMat44& inJoltMat)
 		{
 			::Matrix outMat{};
 
@@ -118,19 +125,35 @@ namespace RayJolt{
 			return outMat;
 		}
 
+		inline BoundingBox ToRaylibBoundingBox(const JPH::AABox box) {
+			return { 
+				static_cast<float>(box.mMin), //Min
+				static_cast<float>(box.mMax)  //Max
+			}
+		}
+
+		
 		//==================================================
 
 		//===========RAYLIB->JOLT============================
+
+		inline JPH::Vec4 ToJoltVec4(const Vector4& value) {
+			return { value.x,value.y,value.z,value.w };
+		}
 		
-		JPH::RVec3 ToJoltVec3(const Vector3& value) {
-			return { value.x,value.y,value.z };
+		inline JPH::Vec3 ToJoltVec3(const Vector3& value) {
+			return { value.x, value.y, value.z };
 		}
 
-		JPH::RVec3Arg ToJoltVec3Arg(const Vector3& value) {
-			return { value.x,value.y,value.z };
+		inline JPH::RVec3 ToJoltRVec3(const Vector3& value) {
+			return { value.x, value.y, value.z };
 		}
 
-		JPH::RMat44 ToJoltMat44(const ::Matrix& inRaylibMat)
+		inline JPH::Quat ToJoltQuaternion(const Quaternion& value) {
+			return { value.x, value.y, value.z, value.w };
+		}
+
+		inline JPH::RMat44 ToJoltRMat44(const ::Matrix& inRaylibMat)
 		{
 			const JPH::Vec4 col0(
 				inRaylibMat.m0,
@@ -167,7 +190,52 @@ namespace RayJolt{
 			);
 		}
 
+		inline JPH::Mat44 ToJoltMat44(const ::Matrix& inRaylibMat)
+		{
+			const JPH::Vec4 col0(
+				inRaylibMat.m0,
+				inRaylibMat.m1,
+				inRaylibMat.m2,
+				inRaylibMat.m3
+			);
 
+			const JPH::Vec4 col1(
+				inRaylibMat.m4,
+				inRaylibMat.m5,
+				inRaylibMat.m6,
+				inRaylibMat.m7
+			);
+
+			const JPH::Vec4 col2(
+				inRaylibMat.m8,
+				inRaylibMat.m9,
+				inRaylibMat.m10,
+				inRaylibMat.m11
+			);
+
+			const JPH::Vec3 translation(
+				static_cast<JPH::Real>(inRaylibMat.m12),
+				static_cast<JPH::Real>(inRaylibMat.m13),
+				static_cast<JPH::Real>(inRaylibMat.m14)
+			);
+
+			return JPH::Mat44(
+				col0,
+				col1,
+				col2,
+				translation
+			);
+		}
+
+		// NOTE : Jolt ray direction is "direction * scaler(distance)" = Jolt RayCast.
+		inline JPH::RayCast ToJolt(const Ray& ray, float maxDistance = 1000.0f) {
+			JPH::Vec3 origin(ray.position.x, ray.position.y, ray.position.z);
+			JPH::Vec3 direction(ray.direction.x * maxDistance, ray.direction.y * maxDistance, ray.direction.z * maxDistance);
+			return JPH::RayCast(origin, direction);
+		}
+
+		
+		
 
 		//===================================================
 

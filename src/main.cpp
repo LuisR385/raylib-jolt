@@ -1,3 +1,5 @@
+#include "rj.hpp"
+
 // Include Jolt.h before all other Jolt headers.
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
@@ -17,6 +19,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <thread>
+
 
 static void JoltTrace(const char *format, ...)
 {

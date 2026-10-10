@@ -16,6 +16,10 @@ set(JPH_USE_MTL OFF CACHE BOOL "" FORCE)
 add_subdirectory(external/raylib EXCLUDE_FROM_ALL)
 add_subdirectory(external/JoltPhysics/Build EXCLUDE_FROM_ALL)
 
+# integration release source.
+
+
 add_executable(rayjolt src/main.cpp)
+target_include_directories(rayjolt PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(rayjolt PRIVATE cxx_std_17)
 target_link_libraries(rayjolt PRIVATE raylib Jolt)

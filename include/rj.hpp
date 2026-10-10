@@ -29,7 +29,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <thread>
-
+#include <memory>
 
 namespace RayJolt{
 	//calculate
@@ -234,17 +234,32 @@ namespace RayJolt{
 			JPH::Vec3 direction(ray.direction.x * maxDistance, ray.direction.y * maxDistance, ray.direction.z * maxDistance);
 			return JPH::RayCast(origin, direction);
 		}
-
 		
-		
-
 		//===================================================
 
 
-	}
+	} //!Detail
+
+	//raw initialize jolt.
+	class JoltRuntime {
+	public:
+		JoltRuntime();
+		~JoltRuntime();
+		
+
+
+		JoltRuntime(const JoltRuntime&) = delete;
+		JoltRuntime& operator=(const JoltRuntime&) = delete;
+	private:
+		std::unique_ptr<JPH::Factory> factory_ = nullptr;
+	};
+
+
 
 
 	void RayJoltVersion();
+
+	void RJ_Initialize();
 
 }
 

@@ -16,6 +16,7 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayerInterfaceTable.h>
 #include <Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h>
@@ -127,9 +128,9 @@ namespace RayJolt{
 
 		inline BoundingBox ToRaylibBoundingBox(const JPH::AABox box) {
 			return { 
-				static_cast<float>(box.mMin), //Min
-				static_cast<float>(box.mMax)  //Max
-			}
+				ToRaylibVector3(box.mMin),
+				ToRaylibVector3(box.mMax)
+			};
 		}
 
 		

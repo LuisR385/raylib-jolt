@@ -115,9 +115,7 @@ int main()
                 physics.Update(timeStep, 1, &allocator, &jobs);
                 accumulator -= timeStep;
             }
-            const JPH::RVec3 position = bodies.GetPosition(ball);
-            const Vector3 spherePosition{static_cast<float>(position.GetX()),
-                static_cast<float>(position.GetY()), static_cast<float>(position.GetZ())};
+            const Vector3 spherePosition = RJ::Detail::ToRaylibRVector3(bodies.GetPosition(ball));
 
             BeginDrawing();
             ClearBackground(RAYWHITE);

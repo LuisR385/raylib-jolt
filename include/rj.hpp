@@ -32,6 +32,12 @@
 #include <memory>
 
 namespace RayJolt{
+	inline static constexpr int RAYJOLT_VERSION_MAJOR = 0;
+	inline static constexpr int RAYJOLT_VERSION_MINOR = 1;
+	inline static constexpr int RAYJOLT_VERSION_PATCH = 0;
+	inline constexpr const char* RAYJOLT_VERSION = "0.1.0";
+
+
 	//calculate
 	namespace Detail {
 
@@ -248,6 +254,7 @@ namespace RayJolt{
 		
 		bool Init();
 		void End();
+		JPH::EPhysicsUpdateError Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps);
 
 		JoltRuntime(const JoltRuntime&) = delete;
 		JoltRuntime& operator=(const JoltRuntime&) = delete;
@@ -260,9 +267,11 @@ namespace RayJolt{
 
 
 
-	void RayJoltVersion();
+	const char* RJ_Version();
 
-	void RJ_Initialize();
+	bool RJ_Initialize();
+	void RJ_End();
+	JPH::EPhysicsUpdateError RJ_Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps = 1);
 
 }
 

@@ -4,8 +4,6 @@
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
-#include <Jolt/Core/TempAllocator.h>
-#include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
@@ -18,7 +16,6 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
-#include <thread>
 
 
 static void JoltTrace(const char *format, ...)
@@ -42,11 +39,10 @@ static bool JoltAssert(const char *expression, const char *message,
 
 int main()
 {
-    JPH::RegisterDefaultAllocator();
     JPH::Trace = JoltTrace;
     JPH_IF_ENABLE_ASSERTS(JPH::AssertFailed = JoltAssert;)
-    JPH::Factory::sInstance = new JPH::Factory();
-    JPH::RegisterTypes();
+    if (!RJ::RJ_Initialize())
+        return 1;
 
     // Destroy all physics objects before unregistering Jolt's types and factory.
     {
@@ -61,10 +57,6 @@ int main()
         JPH::ObjectVsBroadPhaseLayerFilterTable broadPhaseFilter(
             broadPhaseLayers, 2, layerPairs, 2);
 
-        JPH::TempAllocatorImpl allocator(10 * 1024 * 1024);
-        const unsigned cores = std::thread::hardware_concurrency();
-        JPH::JobSystemThreadPool jobs(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers,
-                                     static_cast<int>(cores > 1 ? cores - 1 : 1));
         JPH::PhysicsSystem physics;
         physics.Init(1024, 0, 1024, 1024, broadPhaseLayers, broadPhaseFilter, layerPairs);
         JPH::BodyInterface &bodies = physics.GetBodyInterface();
@@ -112,7 +104,7 @@ int main()
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= timeStep)
             {
-                physics.Update(timeStep, 1, &allocator, &jobs);
+                RJ::RJ_Update(physics, timeStep);
                 accumulator -= timeStep;
             }
             const Vector3 spherePosition = RJ::Detail::ToRaylibRVector3(bodies.GetPosition(ball));
@@ -137,8 +129,6 @@ int main()
         bodies.RemoveBody(floor);
         bodies.DestroyBody(floor);
     }
-    JPH::UnregisterTypes();
-    delete JPH::Factory::sInstance;
-    JPH::Factory::sInstance = nullptr;
+    RJ::RJ_End();
     return 0;
 }

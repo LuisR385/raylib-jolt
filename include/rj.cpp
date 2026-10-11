@@ -1,4 +1,7 @@
 #include "rj.hpp"
+#include <iostream>
+//NOTE : ONLY ONE JOLT RUNTIME.
+static RayJolt::JoltRuntime g_joltRuntime;
 
 namespace RayJolt {
 
@@ -16,11 +19,12 @@ namespace RayJolt {
                 std::make_unique<JPH::TempAllocatorImpl>(
                     10 * 1024 * 1024);
 
+            const unsigned cores = std::thread::hardware_concurrency();
             jobSystem_ =
                 std::make_unique<JPH::JobSystemThreadPool>(
                     JPH::cMaxPhysicsJobs,
                     JPH::cMaxPhysicsBarriers,
-                    std::thread::hardware_concurrency() - 1
+                    static_cast<int>(cores > 1 ? cores - 1 : 1)
                 );
 
             isInitialized = true;
@@ -43,12 +47,43 @@ namespace RayJolt {
 
             delete JPH::Factory::sInstance;
             JPH::Factory::sInstance = nullptr;
+            isInitialized = false;
             TraceLog(LOG_INFO, "rayjolt Process finished successfully.");
+            return;
         }
         
         TraceLog(LOG_INFO, "rayjolt Process failed successfully!");
         
     
+    }
+
+    JPH::EPhysicsUpdateError JoltRuntime::Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps)
+    {
+        JPH_ASSERT(isInitialized);
+        return physics.Update(timeStep, collisionSteps, tempAllocator_.get(), jobSystem_.get());
+    }
+
+    const char* RJ_Version()
+    {
+        return 
+            TextFormat("version %d.%d.%d",
+            RAYJOLT_VERSION_MAJOR,
+            RAYJOLT_VERSION_MINOR,
+            RAYJOLT_VERSION_PATCH);
+    }
+
+    bool RJ_Initialize() {
+        std::cout << "[INFO]Starting Rayjolt (" << RJ_Version() << ")..." << std::endl;
+
+        return g_joltRuntime.Init();
+    }
+
+    void RJ_End() {
+        g_joltRuntime.End();
+    }
+
+    JPH::EPhysicsUpdateError RJ_Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps) {
+        return g_joltRuntime.Update(physics, timeStep, collisionSteps);
     }
 
 }

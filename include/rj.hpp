@@ -243,15 +243,18 @@ namespace RayJolt{
 	//raw initialize jolt.
 	class JoltRuntime {
 	public:
-		JoltRuntime();
-		~JoltRuntime();
+		JoltRuntime() = default;
+		~JoltRuntime() = default;
 		
-
+		bool Init();
+		void End();
 
 		JoltRuntime(const JoltRuntime&) = delete;
 		JoltRuntime& operator=(const JoltRuntime&) = delete;
 	private:
-		std::unique_ptr<JPH::Factory> factory_ = nullptr;
+		bool isInitialized = false;
+		std::unique_ptr<JPH::JobSystemThreadPool> jobSystem_ = nullptr;
+		std::unique_ptr<JPH::TempAllocatorImpl> tempAllocator_ = nullptr;
 	};
 
 

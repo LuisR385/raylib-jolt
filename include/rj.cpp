@@ -2,27 +2,53 @@
 
 namespace RayJolt {
 
-    JoltRuntime::JoltRuntime()
-    {
+    bool JoltRuntime::Init() {
         // 同じオブジェクトでの二重初期化を防ぐ
-        if (factory_)
-            return;
 
-        JPH::RegisterDefaultAllocator();
+        if (!isInitialized) {
+            JPH::RegisterDefaultAllocator();
 
-        factory_ = std::make_unique<JPH::Factory>();
-        JPH::Factory::sInstance = factory_.get(); //owner is factory_.
+            JPH::Factory::sInstance = new JPH::Factory();
 
-        JPH::RegisterTypes();
+            JPH::RegisterTypes();
+
+            tempAllocator_ =
+                std::make_unique<JPH::TempAllocatorImpl>(
+                    10 * 1024 * 1024);
+
+            jobSystem_ =
+                std::make_unique<JPH::JobSystemThreadPool>(
+                    JPH::cMaxPhysicsJobs,
+                    JPH::cMaxPhysicsBarriers,
+                    std::thread::hardware_concurrency() - 1
+                );
+
+            isInitialized = true;
+            TraceLog(LOG_INFO, "ray jolt Initialized Success."); //TODO : call rayjolt version api.
+            return true;
+        }
+        TraceLog(LOG_INFO, "ray jolt Initialize failed.");
+        return false;
     }
 
-    JoltRuntime::~JoltRuntime()
+    void JoltRuntime::End()
     {
         // 初期化していなければ、片付けも不要
-        if (!factory_)
-            return;
 
-        JPH::UnregisterTypes();
-        JPH::Factory::sInstance = nullptr;
+        if (isInitialized) {
+            jobSystem_.reset();
+            tempAllocator_.reset();
+
+            JPH::UnregisterTypes();
+
+            delete JPH::Factory::sInstance;
+            JPH::Factory::sInstance = nullptr;
+            TraceLog(LOG_INFO, "rayjolt Process finished successfully.");
+        }
+        
+        TraceLog(LOG_INFO, "rayjolt Process failed successfully!");
+        
+    
     }
+
 }

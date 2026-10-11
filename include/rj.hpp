@@ -262,18 +262,22 @@ namespace RayJolt{
 
 	} //!Detail
 
+
+
+	//====================Start declare Struct/Class====================
+	
 	//raw initialize jolt.
 	class JoltRuntime {
 	public:
 		JoltRuntime() = default;
 		~JoltRuntime() = default;
-		
+
 		bool Init();
 		void End();
 		JPH::EPhysicsUpdateError Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps);
 
 		//Advanced Api.
-		
+
 		const std::unique_ptr<JPH::JobSystemThreadPool>& GetJobSystem()const {
 			return jobSystem_;
 		}
@@ -290,7 +294,7 @@ namespace RayJolt{
 		std::unique_ptr<JPH::TempAllocatorImpl> tempAllocator_ = nullptr;
 	};
 
-	//====================Start declare Struct/Class====================
+
 
 
 	class PhysicsWorld {

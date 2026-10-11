@@ -46,26 +46,19 @@ int main()
 
     // Destroy all physics objects before unregistering Jolt's types and factory.
     {
-        constexpr JPH::ObjectLayer staticLayer = 0;
-        constexpr JPH::ObjectLayer dynamicLayer = 1;
-        JPH::ObjectLayerPairFilterTable layerPairs(2);
-        layerPairs.EnableCollision(staticLayer, dynamicLayer);
-        layerPairs.EnableCollision(dynamicLayer, dynamicLayer);
-        JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers(2, 2);
-        broadPhaseLayers.MapObjectToBroadPhaseLayer(staticLayer, JPH::BroadPhaseLayer(0));
-        broadPhaseLayers.MapObjectToBroadPhaseLayer(dynamicLayer, JPH::BroadPhaseLayer(1));
-        JPH::ObjectVsBroadPhaseLayerFilterTable broadPhaseFilter(
-            broadPhaseLayers, 2, layerPairs, 2);
-
-        JPH::PhysicsSystem physics;
-        physics.Init(1024, 0, 1024, 1024, broadPhaseLayers, broadPhaseFilter, layerPairs);
-        JPH::BodyInterface &bodies = physics.GetBodyInterface();
+        RJ::PhysicsWorld physics;
+        if (!physics.Init())
+        {
+            RJ::RJ_End();
+            return 1;
+        }
+        JPH::BodyInterface &bodies = physics.GetbodyInterface();
 
         // BoxShape takes half extents. The top of this floor is y = 0.
         JPH::BodyCreationSettings floorSettings(
             new JPH::BoxShape(JPH::Vec3(10.0f, 0.5f, 10.0f)),
             JPH::RVec3(0.0f, -0.5f, 0.0f), JPH::Quat::sIdentity(),
-            JPH::EMotionType::Static, staticLayer);
+            JPH::EMotionType::Static, RJ::ObjectLayers::NON_MOVING);
         floorSettings.mRestitution = 0.8f;
         const JPH::BodyID floor = bodies.CreateAndAddBody(
             floorSettings, JPH::EActivation::DontActivate);
@@ -74,11 +67,12 @@ int main()
         const JPH::RVec3 startPosition(0.0f, 6.0f, 0.0f);
         JPH::BodyCreationSettings ballSettings(
             new JPH::SphereShape(radius), startPosition, JPH::Quat::sIdentity(),
-            JPH::EMotionType::Dynamic, dynamicLayer);
+            JPH::EMotionType::Dynamic, RJ::ObjectLayers::MOVING);
         ballSettings.mRestitution = 0.8f;
         const JPH::BodyID ball = bodies.CreateAndAddBody(
             ballSettings, JPH::EActivation::Activate);
-        physics.OptimizeBroadPhase();
+        //physics.OptimizeBroadPhase();
+        RJ::RJ_OptimizeBroadPhase(physics);
 
         SetConfigFlags(FLAG_MSAA_4X_HINT);
         InitWindow(1280, 720, "rayjolt - raylib + Jolt Hello World");
@@ -90,7 +84,6 @@ int main()
         camera.fovy = 45.0f;
         camera.projection = CAMERA_PERSPECTIVE;
 
-        constexpr float timeStep = 1.0f / 60.0f;
         float accumulator = 0.0f;
         while (!WindowShouldClose())
         {
@@ -102,10 +95,10 @@ int main()
                 accumulator = 0.0f;
             }
             accumulator += std::min(GetFrameTime(), 0.25f);
-            while (accumulator >= timeStep)
+            while (accumulator >= RJ::timeStep)
             {
-                RJ::RJ_Update(physics, timeStep);
-                accumulator -= timeStep;
+                RJ::RJ_Update(physics, RJ::timeStep);
+                accumulator -= RJ::timeStep;
             }
             const Vector3 spherePosition = RJ::Detail::ToRaylibRVector3(bodies.GetPosition(ball));
 

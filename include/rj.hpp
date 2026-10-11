@@ -32,14 +32,30 @@
 #include <memory>
 
 namespace RayJolt{
-	inline static constexpr int RAYJOLT_VERSION_MAJOR = 0;
-	inline static constexpr int RAYJOLT_VERSION_MINOR = 1;
-	inline static constexpr int RAYJOLT_VERSION_PATCH = 0;
+	inline static constexpr int  RAYJOLT_VERSION_MAJOR = 0;
+	inline static constexpr int  RAYJOLT_VERSION_MINOR = 1;
+	inline static constexpr int  RAYJOLT_VERSION_PATCH = 0;
 	inline constexpr const char* RAYJOLT_VERSION = "0.1.0";
+	inline constexpr float		 timeStep = 1.0f / 60.0f;
+	
+	namespace ObjectLayers
+	{
+		constexpr JPH::ObjectLayer NON_MOVING = 0;
+		constexpr JPH::ObjectLayer MOVING = 1;
+	}
+
+	namespace BroadPhaseLayers
+	{
+		constexpr JPH::BroadPhaseLayer NON_MOVING(0);
+		constexpr JPH::BroadPhaseLayer MOVING(1);
+	}
 
 
 	//calculate
 	namespace Detail {
+
+
+
 
 		//=====JOLT->RAYLIB================================
 
@@ -256,6 +272,16 @@ namespace RayJolt{
 		void End();
 		JPH::EPhysicsUpdateError Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps);
 
+		//Advanced Api.
+		
+		const std::unique_ptr<JPH::JobSystemThreadPool>& GetJobSystem()const {
+			return jobSystem_;
+		}
+
+		const std::unique_ptr<JPH::TempAllocatorImpl>& GetTempAllocator()const {
+			return tempAllocator_;
+		}
+
 		JoltRuntime(const JoltRuntime&) = delete;
 		JoltRuntime& operator=(const JoltRuntime&) = delete;
 	private:
@@ -264,14 +290,55 @@ namespace RayJolt{
 		std::unique_ptr<JPH::TempAllocatorImpl> tempAllocator_ = nullptr;
 	};
 
+	//====================Start declare Struct/Class====================
 
 
+	class PhysicsWorld {
+	public:
 
+		bool Init();
+		void Update(float deltaTime,int collisionStep = 1);
+		void Shutdown();
+
+		void OptimizeBroadPhase() {
+			physicsSystem_.OptimizeBroadPhase();
+		}
+
+
+		JPH::BodyInterface& GetbodyInterface() {
+			return physicsSystem_.GetBodyInterface();
+		}
+
+		const JPH::BodyInterface& GetbodyInterface() const {
+			return physicsSystem_.GetBodyInterface();
+		}
+
+		//Advanced API.
+		JPH::PhysicsSystem& GetPhysicsSystem() {
+			return physicsSystem_;
+		}
+
+		const JPH::PhysicsSystem& GetPhysicsSystem()const {
+			return physicsSystem_;
+		}
+
+		
+
+
+	private:
+		JPH::ObjectLayerPairFilterTable layerPairs_{2};
+		JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers_{2, 2};
+		std::unique_ptr<JPH::ObjectVsBroadPhaseLayerFilterTable> broadPhaseFilter_;
+		JPH::PhysicsSystem physicsSystem_;
+	};
+
+	//====================End declare Struct/Class====================
 	const char* RJ_Version();
 
 	bool RJ_Initialize();
 	void RJ_End();
-	JPH::EPhysicsUpdateError RJ_Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps = 1);
+	JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld& physics, float timeStep, int collisionSteps = 1);
+	void RJ_OptimizeBroadPhase(PhysicsWorld& physics);
 
 }
 

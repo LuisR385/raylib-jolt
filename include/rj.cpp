@@ -5,6 +5,9 @@ static RayJolt::JoltRuntime g_joltRuntime;
 
 namespace RayJolt {
 
+    //====================Start declare Struct/Class INFO====================
+
+
     bool JoltRuntime::Init() {
         // 同じオブジェクトでの二重初期化を防ぐ
 
@@ -57,6 +60,30 @@ namespace RayJolt {
     
     }
 
+    bool PhysicsWorld::Init()
+    {
+        layerPairs_.EnableCollision(ObjectLayers::NON_MOVING, ObjectLayers::MOVING);
+        layerPairs_.EnableCollision(ObjectLayers::MOVING, ObjectLayers::MOVING);
+        broadPhaseLayers_.MapObjectToBroadPhaseLayer(ObjectLayers::NON_MOVING, BroadPhaseLayers::NON_MOVING);
+        broadPhaseLayers_.MapObjectToBroadPhaseLayer(ObjectLayers::MOVING, BroadPhaseLayers::MOVING);
+        broadPhaseFilter_ = std::make_unique<JPH::ObjectVsBroadPhaseLayerFilterTable>(
+            broadPhaseLayers_, 2, layerPairs_, 2);
+
+        physicsSystem_.Init(1024, 0, 1024, 1024, broadPhaseLayers_, *broadPhaseFilter_, layerPairs_);
+
+        return true;
+    }
+
+    void PhysicsWorld::Update(float deltaTime, int collisionStep) {
+        RJ_Update(*this, deltaTime, collisionStep);
+    }
+
+    void PhysicsWorld::Shutdown() {
+        broadPhaseFilter_.reset();
+    }
+
+    //====================End declare Struct/Class INFO====================
+
     JPH::EPhysicsUpdateError JoltRuntime::Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps)
     {
         JPH_ASSERT(isInitialized);
@@ -82,8 +109,12 @@ namespace RayJolt {
         g_joltRuntime.End();
     }
 
-    JPH::EPhysicsUpdateError RJ_Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps) {
-        return g_joltRuntime.Update(physics, timeStep, collisionSteps);
+    JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld& physics, float timeStep, int collisionSteps) {
+        return g_joltRuntime.Update(physics.GetPhysicsSystem(), timeStep, collisionSteps);
+    }
+
+    void RJ_OptimizeBroadPhase(PhysicsWorld& physics) {
+        physics.OptimizeBroadPhase();
     }
 
 }

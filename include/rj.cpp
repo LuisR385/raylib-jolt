@@ -82,6 +82,33 @@ namespace RayJolt {
         broadPhaseFilter_.reset();
     }
 
+    BodyHandle PhysicsWorld::CreateBox(const BoxDesc& desc) {
+        //put int halfExtents
+        JPH::Vec3 halfExtents(desc.size.x * 0.5f, desc.size.y * 0.5f, desc.size.z * 0.5f);
+
+        //Set motionType / Object of layer
+        JPH::EMotionType motionType = desc.isStatic ? JPH::EMotionType::Static : JPH::EMotionType::Dynamic;
+        JPH::ObjectLayer layer = desc.isStatic ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING;
+
+        //setting
+        JPH::BodyCreationSettings settings(
+            new JPH::BoxShape(halfExtents),
+            Detail::ToJoltRVec3(desc.position),
+            Detail::ToJoltQuaternion(desc.rotation),
+            motionType,
+            layer
+        );
+
+        settings.mRestitution = desc.restitution;
+        settings.mFriction = desc.friction;
+
+        //NOTE : isStatic->true = DontActivate.
+        JPH::EActivation activation = desc.isStatic ? JPH::EActivation::DontActivate : JPH::EActivation::Activate;
+
+        JPH::BodyID jphId = physicsSystem_.GetBodyInterface().CreateAndAddBody(settings, activation);
+        return BodyHandle(jphId);
+    }
+
     //====================End declare Struct/Class INFO====================
 
     JPH::EPhysicsUpdateError JoltRuntime::Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps)

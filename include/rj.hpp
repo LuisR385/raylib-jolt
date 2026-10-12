@@ -266,6 +266,63 @@ namespace RayJolt{
 
 	//====================Start declare Struct/Class====================
 	
+	struct BoxDesc {
+	public:
+        Vector3 size = { 1.0f, 1.0f, 1.0f };
+        Vector3 position = { 0.0f, 0.0f, 0.0f };
+        Quaternion rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+        bool isStatic = false; // trueなら静的、falseなら動的
+        float restitution = 0.2f;
+        float friction = 0.2f;
+
+		
+		BoxDesc() = default;
+		//NOTE : BoxDesc is just Data so allow copy/move.
+		//allow to copy.
+		BoxDesc(const BoxDesc&) = default;
+		BoxDesc& operator=(const BoxDesc&) = default;
+		//allow to move.
+		BoxDesc(BoxDesc&&) noexcept = default;
+		BoxDesc& operator=(BoxDesc&&) noexcept = default;
+
+	};
+
+	struct SphereDesc {
+	public:
+		Vector3 size = { 1.0f, 1.0f, 1.0f };
+		Vector3 position = { 0.0f, 0.0f, 0.0f };
+		Quaternion rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+		bool isStatic = false; // trueなら静的、falseなら動的
+		float restitution = 0.2f;
+		float friction = 0.2f;
+
+
+		SphereDesc() = default;
+		//allow copy/move. just data.
+		SphereDesc(const SphereDesc&) = default;
+		SphereDesc& operator=(const SphereDesc&) = default;
+		SphereDesc(SphereDesc&&) noexcept = default;
+		SphereDesc& operator=(SphereDesc&&) noexcept = default;
+
+	};
+
+
+	struct BodyHandle {
+	public:
+		BodyHandle() = default;
+		explicit BodyHandle(JPH::BodyID jphId) : jphId_(jphId) {}
+
+		bool IsValid() const { return !jphId_.IsInvalid(); }
+		
+		// 内部処理用（ユーザーには直接触らせない）
+		// NOTE : Only internal processing. dont use it now.
+		JPH::BodyID GetJoltID() const { return jphId_; }
+
+	private:
+		JPH::BodyID jphId_;
+	};
+
+
 	//raw initialize jolt.
 	class JoltRuntime {
 	public:
@@ -307,6 +364,9 @@ namespace RayJolt{
 		void OptimizeBroadPhase() {
 			physicsSystem_.OptimizeBroadPhase();
 		}
+
+
+		BodyHandle CreateBox(const BoxDesc& desc = {});
 
 
 		JPH::BodyInterface& GetbodyInterface() {

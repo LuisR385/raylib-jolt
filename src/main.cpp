@@ -39,29 +39,32 @@ static bool JoltAssert(const char *expression, const char *message,
 
 int main()
 {
+
     JPH::Trace = JoltTrace;
     JPH_IF_ENABLE_ASSERTS(JPH::AssertFailed = JoltAssert;)
-    if (!RJ::RJ_Initialize())
+    JPH::RegisterDefaultAllocator();
+    RJ::RayJoltContext context;
+    if (!context.runtime.Init())
         return 1;
 
     // Destroy all physics objects before unregistering Jolt's types and factory.
     {
-        RJ::PhysicsWorld physics;
+        RJ::PhysicsWorld& physics = context.world;
         if (!physics.Init())
         {
-            RJ::RJ_End();
             return 1;
         }
         JPH::BodyInterface &bodies = physics.GetbodyInterface();
+        context.initialize = true;
 
-        // BoxShape takes half extents. The top of this floor is y = 0.
-        JPH::BodyCreationSettings floorSettings(
-            new JPH::BoxShape(JPH::Vec3(10.0f, 0.5f, 10.0f)),
-            JPH::RVec3(0.0f, -0.5f, 0.0f), JPH::Quat::sIdentity(),
-            JPH::EMotionType::Static, RJ::ObjectLayers::NON_MOVING);
-        floorSettings.mRestitution = 0.8f;
-        const JPH::BodyID floor = bodies.CreateAndAddBody(
-            floorSettings, JPH::EActivation::DontActivate);
+        RJ::BoxDesc floorSettings;
+        floorSettings.size = {20.0f, 1.0f, 20.0f};
+        floorSettings.position = {0.0f, -0.5f, 0.0f};
+        floorSettings.isStatic = true;
+        floorSettings.restitution = 0.8f;
+        const RJ::BodyHandle floor = physics.CreateBox(floorSettings);
+        if (!floor.IsValid())
+            return 1;
 
         constexpr float radius = 0.5f;
         const JPH::RVec3 startPosition(0.0f, 6.0f, 0.0f);
@@ -71,7 +74,6 @@ int main()
         ballSettings.mRestitution = 0.8f;
         const JPH::BodyID ball = bodies.CreateAndAddBody(
             ballSettings, JPH::EActivation::Activate);
-        //physics.OptimizeBroadPhase();
         RJ::RJ_OptimizeBroadPhase(physics);
 
         SetConfigFlags(FLAG_MSAA_4X_HINT);
@@ -97,7 +99,7 @@ int main()
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
-                RJ::RJ_Update(physics, RJ::timeStep);
+                context.runtime.Update(physics.GetPhysicsSystem(), RJ::timeStep, 1);
                 accumulator -= RJ::timeStep;
             }
             const Vector3 spherePosition = RJ::Detail::ToRaylibRVector3(bodies.GetPosition(ball));
@@ -119,9 +121,8 @@ int main()
         CloseWindow();
         bodies.RemoveBody(ball);
         bodies.DestroyBody(ball);
-        bodies.RemoveBody(floor);
-        bodies.DestroyBody(floor);
+        bodies.RemoveBody(floor.GetJoltID());
+        bodies.DestroyBody(floor.GetJoltID());
     }
-    RJ::RJ_End();
     return 0;
 }

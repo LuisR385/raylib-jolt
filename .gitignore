@@ -2,3 +2,5 @@
 /.downloads/
 *vs
 *out
+*.zed
+*build-clang

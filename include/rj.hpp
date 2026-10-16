@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <thread>
 #include <memory>
+#include <vector>
 
 namespace RayJolt{
 	inline static constexpr int  RAYJOLT_VERSION_MAJOR = 0;
@@ -37,7 +38,7 @@ namespace RayJolt{
 	inline static constexpr int  RAYJOLT_VERSION_PATCH = 0;
 	inline constexpr const char* RAYJOLT_VERSION = "0.1.0";
 	inline constexpr float		 timeStep = 1.0f / 60.0f;
-	
+
 	namespace ObjectLayers
 	{
 		constexpr JPH::ObjectLayer NON_MOVING = 0;
@@ -149,13 +150,13 @@ namespace RayJolt{
 		}
 
 		inline BoundingBox ToRaylibBoundingBox(const JPH::AABox box) {
-			return { 
+			return {
 				ToRaylibVector3(box.mMin),
 				ToRaylibVector3(box.mMax)
 			};
 		}
 
-		
+
 		//==================================================
 
 		//===========RAYLIB->JOLT============================
@@ -163,7 +164,7 @@ namespace RayJolt{
 		inline JPH::Vec4 ToJoltVec4(const Vector4& value) {
 			return { value.x,value.y,value.z,value.w };
 		}
-		
+
 		inline JPH::Vec3 ToJoltVec3(const Vector3& value) {
 			return { value.x, value.y, value.z };
 		}
@@ -256,7 +257,7 @@ namespace RayJolt{
 			JPH::Vec3 direction(ray.direction.x * maxDistance, ray.direction.y * maxDistance, ray.direction.z * maxDistance);
 			return JPH::RayCast(origin, direction);
 		}
-		
+
 		//===================================================
 
 
@@ -265,7 +266,7 @@ namespace RayJolt{
 
 
 	//====================Start declare Struct/Class====================
-	
+
 	struct BoxDesc {
 	public:
         Vector3 size = { 1.0f, 1.0f, 1.0f };
@@ -275,7 +276,7 @@ namespace RayJolt{
         float restitution = 0.2f;
         float friction = 0.2f;
 
-		
+
 		BoxDesc() = default;
 		//NOTE : BoxDesc is just Data so allow copy/move.
 		//allow to copy.
@@ -313,7 +314,7 @@ namespace RayJolt{
 		explicit BodyHandle(JPH::BodyID jphId) : jphId_(jphId) {}
 
 		bool IsValid() const { return !jphId_.IsInvalid(); }
-		
+
 		// 内部処理用（ユーザーには直接触らせない）
 		// NOTE : Only internal processing. dont use it now.
 		JPH::BodyID GetJoltID() const { return jphId_; }
@@ -323,11 +324,16 @@ namespace RayJolt{
 	};
 
 
+	struct PhysicsBody {
+
+	};
+
+
 	//raw initialize jolt.
 	class JoltRuntime {
 	public:
 		JoltRuntime() = default;
-		~JoltRuntime() = default;
+		~JoltRuntime();
 
 		bool Init();
 		void End();
@@ -386,7 +392,7 @@ namespace RayJolt{
 			return physicsSystem_;
 		}
 
-		
+
 
 
 	private:
@@ -394,6 +400,13 @@ namespace RayJolt{
 		JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers_{2, 2};
 		std::unique_ptr<JPH::ObjectVsBroadPhaseLayerFilterTable> broadPhaseFilter_;
 		JPH::PhysicsSystem physicsSystem_;
+		std::vector<PhysicsBody> physicsbodies_;
+	};
+
+	struct RayJoltContext{
+	    JoltRuntime runtime;
+		PhysicsWorld world;
+		bool initialize = false;
 	};
 
 	//====================End declare Struct/Class====================

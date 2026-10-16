@@ -5,10 +5,16 @@ static RayJolt::JoltRuntime g_joltRuntime;
 
 namespace RayJolt {
 
+    JoltRuntime::~JoltRuntime() {
+        if (isInitialized)
+            End();
+    }
+
     //====================Start declare Struct/Class INFO====================
 
 
     bool JoltRuntime::Init() {
+
         // 同じオブジェクトでの二重初期化を防ぐ
 
         if (!isInitialized) {

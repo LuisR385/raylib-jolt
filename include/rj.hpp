@@ -413,6 +413,7 @@ namespace RayJolt{
 	const char* RJ_Version();
 
 	bool RJ_Initialize();
+	void RJ_RegisterDefaultAllocator();
 	void RJ_End();
 	JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld& physics, float timeStep, int collisionSteps = 1);
 	void RJ_OptimizeBroadPhase(PhysicsWorld& physics);

@@ -138,6 +138,10 @@ namespace RayJolt {
         return g_joltRuntime.Init();
     }
 
+    void RJ_RegisterDefaultAllocator() {
+        JPH::RegisterDefaultAllocator();
+    }
+
     void RJ_End() {
         g_joltRuntime.End();
     }

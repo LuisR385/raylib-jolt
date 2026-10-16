@@ -42,7 +42,7 @@ int main()
 
     JPH::Trace = JoltTrace;
     JPH_IF_ENABLE_ASSERTS(JPH::AssertFailed = JoltAssert;)
-    JPH::RegisterDefaultAllocator();
+    RJ::RJ_RegisterDefaultAllocator();
     RJ::RayJoltContext context;
     if (!context.runtime.Init())
         return 1;

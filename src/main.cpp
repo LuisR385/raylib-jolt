@@ -73,6 +73,11 @@ int main()
         RJ::BodyHandle capsule = physics.CreateCapsule(capsuleSettings);
         if (!capsule.IsValid())
             return 1;
+        RJ::CharacterDesc characterSettings;
+        characterSettings.position = {-3.0f, 3.0f, 0.0f};
+        RJ::BodyHandle player = physics.CreateCharacter(characterSettings);
+        if (!player.IsValid())
+            return 1;
         RJ::RJ_OptimizeBroadPhase(physics);
 
         SetConfigFlags(FLAG_MSAA_4X_HINT);
@@ -98,6 +103,8 @@ int main()
                 physics.SetRotation(capsule, capsuleSettings.rotation);
                 physics.SetLinearVelocity(capsule, {0.0f, 0.0f, 0.0f});
                 physics.SetAngularVelocity(capsule, {0.0f, 0.0f, 0.0f});
+                physics.SetPosition(player, characterSettings.position);
+                physics.SetLinearVelocity(player, {0.0f, 0.0f, 0.0f});
                 accumulator = 0.0f;
             }
             if (IsKeyPressed(KEY_SPACE))
@@ -105,6 +112,13 @@ int main()
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
+                Vector3 movement{
+                    float(IsKeyDown(KEY_RIGHT)) - float(IsKeyDown(KEY_LEFT)),
+                    0.0f,
+                    float(IsKeyDown(KEY_DOWN)) - float(IsKeyDown(KEY_UP))};
+                movement = Vector3Scale(Vector3Normalize(movement), 3.0f);
+                movement.y = physics.GetLinearVelocity(player).y;
+                physics.SetLinearVelocity(player, movement);
                 if (IsKeyDown(KEY_F))
                     physics.AddForce(ball, {0.0f, 6000.0f, 0.0f});
                 context.Step(RJ::timeStep);
@@ -132,6 +146,11 @@ int main()
             DrawSphereWires(spherePosition, radius, 16, 16, MAROON);
             DrawCapsule(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, SKYBLUE);
             DrawCapsuleWires(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, BLUE);
+            const Vector3 playerPosition = physics.GetPosition(player);
+            const float playerHalfCylinder = characterSettings.height * 0.5f - characterSettings.radius;
+            DrawCapsule(Vector3Add(playerPosition, {0, playerHalfCylinder, 0}),
+                Vector3Subtract(playerPosition, {0, playerHalfCylinder, 0}),
+                characterSettings.radius, 8, 16, physics.IsGrounded(player) ? GREEN : DARKGREEN);
             if (hitBody) {
                 DrawSphere(mouseHit.point, 0.08f, RED);
                 DrawLine3D(mouseHit.point, Vector3Add(mouseHit.point, mouseHit.normal), RED);
@@ -141,11 +160,13 @@ int main()
             DrawText("R: reset   SPACE: impulse   F: hold force   ESC: exit", 20, 54, 20, DARKGRAY);
             DrawFPS(20, 84);
             DrawText("Left click: impulse at pointed body", 20, 112, 20, DARKGRAY);
+            DrawText("Arrow keys: move green character", 20, 140, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();
         physics.DestroyBody(ball);
         physics.DestroyBody(capsule);
+        physics.DestroyBody(player);
         physics.DestroyBody(floor);
     }
     context.End();

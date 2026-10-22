@@ -95,6 +95,9 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::Shutdown() {
+        for (auto& character : characters_)
+            character->RemoveFromPhysicsSystem();
+        characters_.clear();
         JPH::BodyIDVector bodyIDs;
         physicsSystem_.GetBodies(bodyIDs);
         auto& bodies = physicsSystem_.GetBodyInterface();
@@ -120,6 +123,14 @@ namespace RayJolt {
         }
         auto& bodies = physicsSystem_.GetBodyInterface();
         const auto id = body.GetJoltID();
+        for (auto it = characters_.begin(); it != characters_.end(); ++it) {
+            if ((*it)->GetBodyID() == id) {
+                (*it)->RemoveFromPhysicsSystem();
+                characters_.erase(it);
+                body = BodyHandle{};
+                return true;
+            }
+        }
         if (bodies.IsAdded(id))
             bodies.RemoveBody(id);
         bodies.DestroyBody(id);
@@ -226,6 +237,41 @@ namespace RayJolt {
         physicsSystem_.GetBodyInterface().AddImpulse(body.GetJoltID(), Detail::ToJoltVec3(impulse));
     }
 
+    BodyHandle PhysicsWorld::CreateCharacter(const CharacterDesc& desc) {
+        if (!std::isfinite(desc.radius) || desc.radius <= 0.0f ||
+            !std::isfinite(desc.height) || desc.height <= 2.0f * desc.radius ||
+            !std::isfinite(desc.mass) || desc.mass <= 0.0f ||
+            !std::isfinite(desc.position.x) || !std::isfinite(desc.position.y) ||
+            !std::isfinite(desc.position.z) ||
+            physicsSystem_.GetNumBodies() >= physicsSystem_.GetMaxBodies())
+            return BodyHandle{};
+
+        const float halfCylinderHeight = desc.height * 0.5f - desc.radius;
+        JPH::CharacterSettings settings;
+        settings.mShape = new JPH::CapsuleShape(halfCylinderHeight, desc.radius);
+        settings.mMass = desc.mass;
+        settings.mLayer = ObjectLayers::MOVING;
+        settings.mSupportingVolume = JPH::Plane(JPH::Vec3::sAxisY(), halfCylinderHeight);
+        JPH::Ref<JPH::Character> character = new JPH::Character(
+            &settings, Detail::ToJoltRVec3(desc.position), JPH::Quat::sIdentity(), 0, &physicsSystem_);
+        characters_.push_back(character);
+        character->AddToPhysicsSystem();
+        return BodyHandle(character->GetBodyID());
+    }
+
+    bool PhysicsWorld::IsGrounded(BodyHandle body) const {
+        for (const auto& character : characters_) {
+            if (character->GetBodyID() == body.GetJoltID())
+                return character->GetGroundState() == JPH::CharacterBase::EGroundState::OnGround;
+        }
+        throw std::invalid_argument("Body is not a character in this world");
+    }
+
+    void PhysicsWorld::UpdateCharacterContacts() {
+        for (auto& character : characters_)
+            character->PostSimulation(0.05f);
+    }
+
     bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, RayHit& hit) const {
         hit = {};
         if (!std::isfinite(maxDistance) || maxDistance <= 0.0f ||
@@ -319,7 +365,9 @@ namespace RayJolt {
     JPH::EPhysicsUpdateError RayJoltContext::Step(float deltaTime, int collisionSteps) {
         if (!world_)
             throw std::logic_error("RayJoltContext::Init() must succeed before Step()");
-        return runtime_.Update(world_->GetPhysicsSystem(), deltaTime, collisionSteps);
+        const auto result = runtime_.Update(world_->GetPhysicsSystem(), deltaTime, collisionSteps);
+        world_->UpdateCharacterContacts();
+        return result;
     }
 
     PhysicsWorld& RayJoltContext::GetWorld() {
@@ -352,7 +400,9 @@ namespace RayJolt {
     }
 
     JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld& physics, float timeStep, int collisionSteps) {
-        return g_joltRuntime.Update(physics.GetPhysicsSystem(), timeStep, collisionSteps);
+        const auto result = g_joltRuntime.Update(physics.GetPhysicsSystem(), timeStep, collisionSteps);
+        physics.UpdateCharacterContacts();
+        return result;
     }
 
     void RJ_OptimizeBroadPhase(PhysicsWorld& physics) {

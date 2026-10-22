@@ -13,6 +13,7 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Character/Character.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayerInterfaceTable.h>
@@ -315,6 +316,13 @@ namespace RayJolt{
 		float friction = 0.2f;
 	};
 
+	struct CharacterDesc {
+		float radius = 0.3f;
+		float height = 1.8f;
+		float mass = 80.0f;
+		Vector3 position = { 0.0f, 0.0f, 0.0f };
+	};
+
 	struct BodyHandle {
 	public:
 		BodyHandle() = default;
@@ -390,6 +398,8 @@ namespace RayJolt{
 		BodyHandle CreateBox(const BoxDesc& desc = {});
 		BodyHandle CreateSphere(const SphereDesc& desc = {});
 		BodyHandle CreateCapsule(const CapsuleDesc& desc = {});
+		BodyHandle CreateCharacter(const CharacterDesc& desc = {});
+		bool IsGrounded(BodyHandle character) const;
 		Vector3 GetPosition(BodyHandle body) const;
 		void SetPosition(BodyHandle body, Vector3 value);
 		Quaternion GetRotation(BodyHandle body) const;
@@ -426,6 +436,10 @@ namespace RayJolt{
 
 
 	private:
+		friend class RayJoltContext;
+		friend JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld&, float, int);
+		void UpdateCharacterContacts();
+		std::vector<JPH::Ref<JPH::Character>> characters_;
 		JPH::ObjectLayerPairFilterTable layerPairs_{2};
 		JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers_{2, 2};
 		std::unique_ptr<JPH::ObjectVsBroadPhaseLayerFilterTable> broadPhaseFilter_;

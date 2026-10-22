@@ -98,6 +98,7 @@ namespace RayJolt {
         for (auto& character : characters_)
             character->RemoveFromPhysicsSystem();
         characters_.clear();
+        jumpingCharacters_.clear();
         JPH::BodyIDVector bodyIDs;
         physicsSystem_.GetBodies(bodyIDs);
         auto& bodies = physicsSystem_.GetBodyInterface();
@@ -127,6 +128,7 @@ namespace RayJolt {
             if ((*it)->GetBodyID() == id) {
                 (*it)->RemoveFromPhysicsSystem();
                 characters_.erase(it);
+                jumpingCharacters_.erase(std::remove(jumpingCharacters_.begin(), jumpingCharacters_.end(), id), jumpingCharacters_.end());
                 body = BodyHandle{};
                 return true;
             }
@@ -267,9 +269,37 @@ namespace RayJolt {
         throw std::invalid_argument("Body is not a character in this world");
     }
 
-    void PhysicsWorld::UpdateCharacterContacts() {
-        for (auto& character : characters_)
+    bool PhysicsWorld::Jump(BodyHandle body, float speed) {
+        for (auto& character : characters_) {
+            if (character->GetBodyID() != body.GetJoltID())
+                continue;
+            if (!std::isfinite(speed) || speed <= 0.0f)
+                return false;
+            const auto id = body.GetJoltID();
+            if (std::find(jumpingCharacters_.begin(), jumpingCharacters_.end(), id) != jumpingCharacters_.end())
+                return false;
             character->PostSimulation(0.05f);
+            if (character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround)
+                return false;
+            auto velocity = character->GetLinearVelocity();
+            velocity.SetY(character->GetGroundVelocity().GetY() + speed);
+            jumpingCharacters_.push_back(id);
+            character->SetLinearVelocity(velocity);
+            character->Activate();
+            return true;
+        }
+        throw std::invalid_argument("Body is not a character in this world");
+    }
+
+    void PhysicsWorld::UpdateCharacterContacts() {
+        for (auto& character : characters_) {
+            character->PostSimulation(0.05f);
+            if (character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround ||
+                character->GetLinearVelocity().GetY() <= character->GetGroundVelocity().GetY()) {
+                const auto id = character->GetBodyID();
+                jumpingCharacters_.erase(std::remove(jumpingCharacters_.begin(), jumpingCharacters_.end(), id), jumpingCharacters_.end());
+            }
+        }
     }
 
     bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, RayHit& hit) const {

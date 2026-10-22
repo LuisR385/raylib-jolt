@@ -91,6 +91,7 @@ int main()
         camera.projection = CAMERA_PERSPECTIVE;
 
         float accumulator = 0.0f;
+        bool jumpRequested = false;
         while (!WindowShouldClose())
         {
             if (IsKeyPressed(KEY_R))
@@ -106,9 +107,12 @@ int main()
                 physics.SetPosition(player, characterSettings.position);
                 physics.SetLinearVelocity(player, {0.0f, 0.0f, 0.0f});
                 accumulator = 0.0f;
+                jumpRequested = false;
             }
             if (IsKeyPressed(KEY_SPACE))
                 physics.AddImpulse(ball, {0.0f, 3000.0f, 0.0f});
+            if (IsKeyPressed(KEY_J))
+                jumpRequested = true;
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
@@ -119,6 +123,10 @@ int main()
                 movement = Vector3Scale(Vector3Normalize(movement), 3.0f);
                 movement.y = physics.GetLinearVelocity(player).y;
                 physics.SetLinearVelocity(player, movement);
+                if (jumpRequested) {
+                    physics.Jump(player);
+                    jumpRequested = false;
+                }
                 if (IsKeyDown(KEY_F))
                     physics.AddForce(ball, {0.0f, 6000.0f, 0.0f});
                 context.Step(RJ::timeStep);
@@ -160,7 +168,7 @@ int main()
             DrawText("R: reset   SPACE: impulse   F: hold force   ESC: exit", 20, 54, 20, DARKGRAY);
             DrawFPS(20, 84);
             DrawText("Left click: impulse at pointed body", 20, 112, 20, DARKGRAY);
-            DrawText("Arrow keys: move green character", 20, 140, 20, DARKGRAY);
+            DrawText("Arrow keys: move green character   J: jump", 20, 140, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

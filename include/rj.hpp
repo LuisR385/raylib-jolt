@@ -400,6 +400,7 @@ namespace RayJolt{
 		BodyHandle CreateCapsule(const CapsuleDesc& desc = {});
 		BodyHandle CreateCharacter(const CharacterDesc& desc = {});
 		bool IsGrounded(BodyHandle character) const;
+		bool Jump(BodyHandle character, float speed = 5.0f);
 		Vector3 GetPosition(BodyHandle body) const;
 		void SetPosition(BodyHandle body, Vector3 value);
 		Quaternion GetRotation(BodyHandle body) const;
@@ -440,6 +441,7 @@ namespace RayJolt{
 		friend JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld&, float, int);
 		void UpdateCharacterContacts();
 		std::vector<JPH::Ref<JPH::Character>> characters_;
+		std::vector<JPH::BodyID> jumpingCharacters_;
 		JPH::ObjectLayerPairFilterTable layerPairs_{2};
 		JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers_{2, 2};
 		std::unique_ptr<JPH::ObjectVsBroadPhaseLayerFilterTable> broadPhaseFilter_;

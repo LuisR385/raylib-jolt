@@ -1,10 +1,6 @@
 #pragma once
 
-//TODO : API時に使用するため今はまだexperimental
-//inline constexpr int RAYJOLT_VERSION_MINOR 0;
-//inline constexpr int RAYJOLT_VERSION_MAJOR 0;
-//inline constexpr int RAYJOLT_VERSION_PATCH 0;
-//inline constexpr const char* RAYJOLT_VERSION_STRING = nullptr;
+
 
 //Jolt headers.
 #include <Jolt/Jolt.h>
@@ -35,9 +31,9 @@
 
 namespace RayJolt{
 	inline static constexpr int  RAYJOLT_VERSION_MAJOR = 0;
-	inline static constexpr int  RAYJOLT_VERSION_MINOR = 1;
+	inline static constexpr int  RAYJOLT_VERSION_MINOR = 2;
 	inline static constexpr int  RAYJOLT_VERSION_PATCH = 0;
-	inline constexpr const char* RAYJOLT_VERSION = "0.1.0";
+	inline constexpr const char* RAYJOLT_VERSION = "0.2.0";
 	inline constexpr float		 timeStep = 1.0f / 60.0f;
 
 	namespace ObjectLayers

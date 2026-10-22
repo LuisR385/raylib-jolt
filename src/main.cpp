@@ -117,6 +117,10 @@ int main()
                 {0.0f, halfCylinderHeight, 0.0f}, physics.GetRotation(capsule));
             const Vector3 capsuleTop = Vector3Add(capsulePosition, capsuleOffset);
             const Vector3 capsuleBottom = Vector3Subtract(capsulePosition, capsuleOffset);
+            RJ::RayHit mouseHit;
+            const bool hitBody = physics.CastRay(GetScreenToWorldRay(GetMousePosition(), camera), 100.0f, mouseHit);
+            if (hitBody && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+                physics.AddImpulse(mouseHit.body, {0.0f, 3000.0f, 0.0f});
 
             BeginDrawing();
             ClearBackground(RAYWHITE);
@@ -128,10 +132,15 @@ int main()
             DrawSphereWires(spherePosition, radius, 16, 16, MAROON);
             DrawCapsule(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, SKYBLUE);
             DrawCapsuleWires(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, BLUE);
+            if (hitBody) {
+                DrawSphere(mouseHit.point, 0.08f, RED);
+                DrawLine3D(mouseHit.point, Vector3Add(mouseHit.point, mouseHit.normal), RED);
+            }
             EndMode3D();
             DrawText("rayjolt | raylib + Jolt Physics", 20, 20, 24, DARKGRAY);
             DrawText("R: reset   SPACE: impulse   F: hold force   ESC: exit", 20, 54, 20, DARKGRAY);
             DrawFPS(20, 84);
+            DrawText("Left click: impulse at pointed body", 20, 112, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

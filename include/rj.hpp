@@ -331,6 +331,13 @@ namespace RayJolt{
 	};
 
 
+	struct RayHit {
+		BodyHandle body;
+		Vector3 point = {};
+		Vector3 normal = {};
+		float distance = 0.0f;
+	};
+
 	struct PhysicsBody {
 
 	};
@@ -393,6 +400,7 @@ namespace RayJolt{
 		void SetAngularVelocity(BodyHandle body, Vector3 value);
 		void AddForce(BodyHandle body, Vector3 force);
 		void AddImpulse(BodyHandle body, Vector3 impulse);
+		bool CastRay(const Ray& ray, float maxDistance, RayHit& hit) const;
 		bool ContainsBody(BodyHandle body) const;
 		bool DestroyBody(BodyHandle& body);
 

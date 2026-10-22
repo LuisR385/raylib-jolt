@@ -2,6 +2,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/NarrowPhaseQuery.h>
 //NOTE : ONLY ONE JOLT RUNTIME.
 static RayJolt::JoltRuntime g_joltRuntime;
 
@@ -222,6 +224,38 @@ namespace RayJolt {
         if (!ContainsBody(body))
             throw std::invalid_argument("Body does not exist in this world");
         physicsSystem_.GetBodyInterface().AddImpulse(body.GetJoltID(), Detail::ToJoltVec3(impulse));
+    }
+
+    bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, RayHit& hit) const {
+        hit = {};
+        if (!std::isfinite(maxDistance) || maxDistance <= 0.0f ||
+            !std::isfinite(ray.position.x) || !std::isfinite(ray.position.y) ||
+            !std::isfinite(ray.position.z) || !std::isfinite(ray.direction.x) ||
+            !std::isfinite(ray.direction.y) || !std::isfinite(ray.direction.z))
+            return false;
+
+        const double length = std::hypot(double(ray.direction.x), double(ray.direction.y), double(ray.direction.z));
+        if (length == 0.0)
+            return false;
+        const JPH::Vec3 displacement(
+            float(ray.direction.x / length * maxDistance),
+            float(ray.direction.y / length * maxDistance),
+            float(ray.direction.z / length * maxDistance));
+        const JPH::RRayCast joltRay(Detail::ToJoltRVec3(ray.position), displacement);
+        JPH::RayCastResult result;
+        if (!physicsSystem_.GetNarrowPhaseQuery().CastRay(joltRay, result))
+            return false;
+
+        JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), result.mBodyID);
+        if (!lock.Succeeded())
+            return false;
+        const auto point = joltRay.GetPointOnRay(result.mFraction);
+        hit.body = BodyHandle(result.mBodyID);
+        hit.point = Detail::ToRaylibRVector3(point);
+        hit.normal = Detail::ToRaylibVector3(
+            lock.GetBody().GetWorldSpaceSurfaceNormal(result.mSubShapeID2, point));
+        hit.distance = result.mFraction * maxDistance;
+        return true;
     }
 
     BodyHandle PhysicsWorld::CreateBox(const BoxDesc& desc) {

@@ -69,6 +69,10 @@ namespace RayJolt {
     
     }
 
+    PhysicsWorld::~PhysicsWorld() {
+        Shutdown();
+    }
+
     bool PhysicsWorld::Init()
     {
         layerPairs_.EnableCollision(ObjectLayers::NON_MOVING, ObjectLayers::MOVING);
@@ -88,7 +92,36 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::Shutdown() {
-        broadPhaseFilter_.reset();
+        JPH::BodyIDVector bodyIDs;
+        physicsSystem_.GetBodies(bodyIDs);
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        for (const auto& id : bodyIDs) {
+            if (bodies.IsAdded(id))
+                bodies.RemoveBody(id);
+            bodies.DestroyBody(id);
+        }
+    }
+
+    bool PhysicsWorld::ContainsBody(BodyHandle body) const {
+        if (!body.IsValid())
+            return false;
+        JPH::BodyIDVector bodyIDs;
+        physicsSystem_.GetBodies(bodyIDs);
+        return std::find(bodyIDs.begin(), bodyIDs.end(), body.GetJoltID()) != bodyIDs.end();
+    }
+
+    bool PhysicsWorld::DestroyBody(BodyHandle& body) {
+        if (!ContainsBody(body)) {
+            body = BodyHandle{};
+            return false;
+        }
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        const auto id = body.GetJoltID();
+        if (bodies.IsAdded(id))
+            bodies.RemoveBody(id);
+        bodies.DestroyBody(id);
+        body = BodyHandle{};
+        return true;
     }
 
     BodyHandle PhysicsWorld::CreateBox(const BoxDesc& desc) {

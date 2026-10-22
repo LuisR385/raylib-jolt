@@ -28,3 +28,13 @@ add_executable(rayjolt
 target_include_directories(rayjolt PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(rayjolt PRIVATE cxx_std_17)
 target_link_libraries(rayjolt PRIVATE raylib Jolt)
+
+option(RJ_BUILD_TESTS "Build RayJolt lifetime tests" OFF)
+if(RJ_BUILD_TESTS)
+    enable_testing()
+    add_executable(rayjolt_body_tests tests/body_lifetime.cpp include/rj.cpp)
+    target_include_directories(rayjolt_body_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_features(rayjolt_body_tests PRIVATE cxx_std_17)
+    target_link_libraries(rayjolt_body_tests PRIVATE raylib Jolt)
+    add_test(NAME body_lifetime COMMAND rayjolt_body_tests)
+endif()

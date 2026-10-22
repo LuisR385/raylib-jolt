@@ -362,6 +362,7 @@ namespace RayJolt{
 
 	class PhysicsWorld {
 	public:
+		~PhysicsWorld();
 
 		bool Init();
 		void Update(float deltaTime,int collisionStep = 1);
@@ -373,6 +374,8 @@ namespace RayJolt{
 
 
 		BodyHandle CreateBox(const BoxDesc& desc = {});
+		bool ContainsBody(BodyHandle body) const;
+		bool DestroyBody(BodyHandle& body);
 
 
 		JPH::BodyInterface& GetbodyInterface() {

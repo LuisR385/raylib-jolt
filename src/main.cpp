@@ -56,7 +56,7 @@ int main()
         floorSettings.position = {0.0f, -0.5f, 0.0f};
         floorSettings.isStatic = true;
         floorSettings.restitution = 0.8f;
-        const RJ::BodyHandle floor = physics.CreateBox(floorSettings);
+        RJ::BodyHandle floor = physics.CreateBox(floorSettings);
         if (!floor.IsValid())
             return 1;
 
@@ -115,8 +115,7 @@ int main()
         CloseWindow();
         bodies.RemoveBody(ball);
         bodies.DestroyBody(ball);
-        bodies.RemoveBody(floor.GetJoltID());
-        bodies.DestroyBody(floor.GetJoltID());
+        physics.DestroyBody(floor);
     }
     context.End();
     return 0;

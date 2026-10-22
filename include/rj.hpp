@@ -403,10 +403,16 @@ namespace RayJolt{
 		std::vector<PhysicsBody> physicsbodies_;
 	};
 
-	struct RayJoltContext{
-	    JoltRuntime runtime;
-		PhysicsWorld world;
-		bool initialize = false;
+	class RayJoltContext {
+	public:
+		bool Init();
+		void End();
+		JPH::EPhysicsUpdateError Step(float deltaTime, int collisionSteps = 1);
+		PhysicsWorld& GetWorld();
+
+	private:
+		JoltRuntime runtime_;
+		std::unique_ptr<PhysicsWorld> world_;
 	};
 
 	//====================End declare Struct/Class====================

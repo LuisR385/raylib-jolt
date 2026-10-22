@@ -1,5 +1,6 @@
 #include "rj.hpp"
 #include <iostream>
+#include <stdexcept>
 //NOTE : ONLY ONE JOLT RUNTIME.
 static RayJolt::JoltRuntime g_joltRuntime;
 
@@ -18,6 +19,8 @@ namespace RayJolt {
         // 同じオブジェクトでの二重初期化を防ぐ
 
         if (!isInitialized) {
+            if (JPH::Factory::sInstance != nullptr)
+                return false;
             JPH::RegisterDefaultAllocator();
 
             JPH::Factory::sInstance = new JPH::Factory();
@@ -121,6 +124,41 @@ namespace RayJolt {
     {
         JPH_ASSERT(isInitialized);
         return physics.Update(timeStep, collisionSteps, tempAllocator_.get(), jobSystem_.get());
+    }
+
+    bool RayJoltContext::Init() {
+        if (world_)
+            return true;
+        if (!runtime_.Init())
+            return false;
+
+        auto world = std::make_unique<PhysicsWorld>();
+        if (!world->Init()) {
+            world.reset();
+            runtime_.End();
+            return false;
+        }
+        world_ = std::move(world);
+        return true;
+    }
+
+    void RayJoltContext::End() {
+        if (!world_)
+            return;
+        world_.reset();
+        runtime_.End();
+    }
+
+    JPH::EPhysicsUpdateError RayJoltContext::Step(float deltaTime, int collisionSteps) {
+        if (!world_)
+            throw std::logic_error("RayJoltContext::Init() must succeed before Step()");
+        return runtime_.Update(world_->GetPhysicsSystem(), deltaTime, collisionSteps);
+    }
+
+    PhysicsWorld& RayJoltContext::GetWorld() {
+        if (!world_)
+            throw std::logic_error("RayJoltContext::Init() must succeed before GetWorld()");
+        return *world_;
     }
 
     const char* RJ_Version()

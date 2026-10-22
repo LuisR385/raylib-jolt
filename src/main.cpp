@@ -42,20 +42,14 @@ int main()
 
     JPH::Trace = JoltTrace;
     JPH_IF_ENABLE_ASSERTS(JPH::AssertFailed = JoltAssert;)
-    RJ::RJ_RegisterDefaultAllocator();
     RJ::RayJoltContext context;
-    if (!context.runtime.Init())
+    if (!context.Init())
         return 1;
 
     // Destroy all physics objects before unregistering Jolt's types and factory.
     {
-        RJ::PhysicsWorld& physics = context.world;
-        if (!physics.Init())
-        {
-            return 1;
-        }
+        RJ::PhysicsWorld& physics = context.GetWorld();
         JPH::BodyInterface &bodies = physics.GetbodyInterface();
-        context.initialize = true;
 
         RJ::BoxDesc floorSettings;
         floorSettings.size = {20.0f, 1.0f, 20.0f};
@@ -99,7 +93,7 @@ int main()
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
-                context.runtime.Update(physics.GetPhysicsSystem(), RJ::timeStep, 1);
+                context.Step(RJ::timeStep);
                 accumulator -= RJ::timeStep;
             }
             const Vector3 spherePosition = RJ::Detail::ToRaylibRVector3(bodies.GetPosition(ball));
@@ -124,5 +118,6 @@ int main()
         bodies.RemoveBody(floor.GetJoltID());
         bodies.DestroyBody(floor.GetJoltID());
     }
+    context.End();
     return 0;
 }

@@ -68,6 +68,11 @@ int main()
         RJ::BodyHandle ball = physics.CreateSphere(ballSettings);
         if (!ball.IsValid())
             return 1;
+        RJ::CapsuleDesc capsuleSettings;
+        capsuleSettings.position = {3.0f, 6.0f, 0.0f};
+        RJ::BodyHandle capsule = physics.CreateCapsule(capsuleSettings);
+        if (!capsule.IsValid())
+            return 1;
         RJ::RJ_OptimizeBroadPhase(physics);
 
         SetConfigFlags(FLAG_MSAA_4X_HINT);
@@ -89,6 +94,10 @@ int main()
                 physics.SetRotation(ball, QuaternionIdentity());
                 physics.SetLinearVelocity(ball, {0.0f, 0.0f, 0.0f});
                 physics.SetAngularVelocity(ball, {0.0f, 0.0f, 0.0f});
+                physics.SetPosition(capsule, capsuleSettings.position);
+                physics.SetRotation(capsule, capsuleSettings.rotation);
+                physics.SetLinearVelocity(capsule, {0.0f, 0.0f, 0.0f});
+                physics.SetAngularVelocity(capsule, {0.0f, 0.0f, 0.0f});
                 accumulator = 0.0f;
             }
             accumulator += std::min(GetFrameTime(), 0.25f);
@@ -98,6 +107,12 @@ int main()
                 accumulator -= RJ::timeStep;
             }
             const Vector3 spherePosition = physics.GetPosition(ball);
+            const Vector3 capsulePosition = physics.GetPosition(capsule);
+            const float halfCylinderHeight = capsuleSettings.height * 0.5f - capsuleSettings.radius;
+            const Vector3 capsuleOffset = Vector3RotateByQuaternion(
+                {0.0f, halfCylinderHeight, 0.0f}, physics.GetRotation(capsule));
+            const Vector3 capsuleTop = Vector3Add(capsulePosition, capsuleOffset);
+            const Vector3 capsuleBottom = Vector3Subtract(capsulePosition, capsuleOffset);
 
             BeginDrawing();
             ClearBackground(RAYWHITE);
@@ -107,14 +122,17 @@ int main()
             DrawGrid(20, 1.0f);
             DrawSphere(spherePosition, radius, ORANGE);
             DrawSphereWires(spherePosition, radius, 16, 16, MAROON);
+            DrawCapsule(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, SKYBLUE);
+            DrawCapsuleWires(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, BLUE);
             EndMode3D();
             DrawText("rayjolt | raylib + Jolt Physics", 20, 20, 24, DARKGRAY);
-            DrawText("R: reset ball   ESC: exit", 20, 54, 20, DARKGRAY);
+            DrawText("R: reset bodies   ESC: exit", 20, 54, 20, DARKGRAY);
             DrawFPS(20, 84);
             EndDrawing();
         }
         CloseWindow();
         physics.DestroyBody(ball);
+        physics.DestroyBody(capsule);
         physics.DestroyBody(floor);
     }
     context.End();

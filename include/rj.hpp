@@ -16,6 +16,7 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayerInterfaceTable.h>
@@ -308,6 +309,16 @@ namespace RayJolt{
 	};
 
 
+	struct CapsuleDesc {
+		float radius = 0.3f;
+		float height = 1.8f;
+		Vector3 position = { 0.0f, 0.0f, 0.0f };
+		Quaternion rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+		bool isStatic = false;
+		float restitution = 0.2f;
+		float friction = 0.2f;
+	};
+
 	struct BodyHandle {
 	public:
 		BodyHandle() = default;
@@ -375,6 +386,7 @@ namespace RayJolt{
 
 		BodyHandle CreateBox(const BoxDesc& desc = {});
 		BodyHandle CreateSphere(const SphereDesc& desc = {});
+		BodyHandle CreateCapsule(const CapsuleDesc& desc = {});
 		Vector3 GetPosition(BodyHandle body) const;
 		void SetPosition(BodyHandle body, Vector3 value);
 		Quaternion GetRotation(BodyHandle body) const;

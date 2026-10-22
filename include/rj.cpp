@@ -140,6 +140,30 @@ namespace RayJolt {
             desc.isStatic ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
     }
 
+    BodyHandle PhysicsWorld::CreateCapsule(const CapsuleDesc& desc) {
+        if (!std::isfinite(desc.radius) || desc.radius <= 0.0f ||
+            !std::isfinite(desc.height) || desc.height < 2.0f * desc.radius)
+            return BodyHandle{};
+
+        const float halfHeight = desc.height * 0.5f - desc.radius;
+        JPH::RefConst<JPH::Shape> shape;
+        if (halfHeight == 0.0f)
+            shape = new JPH::SphereShape(desc.radius);
+        else
+            shape = new JPH::CapsuleShape(halfHeight, desc.radius);
+
+        JPH::BodyCreationSettings settings(
+            shape.GetPtr(),
+            Detail::ToJoltRVec3(desc.position),
+            Detail::ToJoltQuaternion(desc.rotation),
+            desc.isStatic ? JPH::EMotionType::Static : JPH::EMotionType::Dynamic,
+            desc.isStatic ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
+        settings.mRestitution = desc.restitution;
+        settings.mFriction = desc.friction;
+        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
+            desc.isStatic ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
+    }
+
     Vector3 PhysicsWorld::GetPosition(BodyHandle body) const {
         if (!ContainsBody(body))
             throw std::invalid_argument("Body does not exist in this world");

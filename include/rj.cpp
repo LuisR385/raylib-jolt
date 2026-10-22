@@ -212,6 +212,18 @@ namespace RayJolt {
         physicsSystem_.GetBodyInterface().SetAngularVelocity(body.GetJoltID(), Detail::ToJoltVec3(value));
     }
 
+    void PhysicsWorld::AddForce(BodyHandle body, Vector3 force) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        physicsSystem_.GetBodyInterface().AddForce(body.GetJoltID(), Detail::ToJoltVec3(force));
+    }
+
+    void PhysicsWorld::AddImpulse(BodyHandle body, Vector3 impulse) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        physicsSystem_.GetBodyInterface().AddImpulse(body.GetJoltID(), Detail::ToJoltVec3(impulse));
+    }
+
     BodyHandle PhysicsWorld::CreateBox(const BoxDesc& desc) {
         //put int halfExtents
         JPH::Vec3 halfExtents(desc.size.x * 0.5f, desc.size.y * 0.5f, desc.size.z * 0.5f);

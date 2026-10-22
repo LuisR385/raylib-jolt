@@ -391,6 +391,8 @@ namespace RayJolt{
 		void SetLinearVelocity(BodyHandle body, Vector3 value);
 		Vector3 GetAngularVelocity(BodyHandle body) const;
 		void SetAngularVelocity(BodyHandle body, Vector3 value);
+		void AddForce(BodyHandle body, Vector3 force);
+		void AddImpulse(BodyHandle body, Vector3 impulse);
 		bool ContainsBody(BodyHandle body) const;
 		bool DestroyBody(BodyHandle& body);
 

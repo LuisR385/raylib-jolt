@@ -100,9 +100,13 @@ int main()
                 physics.SetAngularVelocity(capsule, {0.0f, 0.0f, 0.0f});
                 accumulator = 0.0f;
             }
+            if (IsKeyPressed(KEY_SPACE))
+                physics.AddImpulse(ball, {0.0f, 3000.0f, 0.0f});
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
+                if (IsKeyDown(KEY_F))
+                    physics.AddForce(ball, {0.0f, 6000.0f, 0.0f});
                 context.Step(RJ::timeStep);
                 accumulator -= RJ::timeStep;
             }
@@ -126,7 +130,7 @@ int main()
             DrawCapsuleWires(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, BLUE);
             EndMode3D();
             DrawText("rayjolt | raylib + Jolt Physics", 20, 20, 24, DARKGRAY);
-            DrawText("R: reset bodies   ESC: exit", 20, 54, 20, DARKGRAY);
+            DrawText("R: reset   SPACE: impulse   F: hold force   ESC: exit", 20, 54, 20, DARKGRAY);
             DrawFPS(20, 84);
             EndDrawing();
         }

@@ -49,7 +49,6 @@ int main()
     // Destroy all physics objects before unregistering Jolt's types and factory.
     {
         RJ::PhysicsWorld& physics = context.GetWorld();
-        JPH::BodyInterface &bodies = physics.GetbodyInterface();
 
         RJ::BoxDesc floorSettings;
         floorSettings.size = {20.0f, 1.0f, 20.0f};
@@ -61,13 +60,14 @@ int main()
             return 1;
 
         constexpr float radius = 0.5f;
-        const JPH::RVec3 startPosition(0.0f, 6.0f, 0.0f);
-        JPH::BodyCreationSettings ballSettings(
-            new JPH::SphereShape(radius), startPosition, JPH::Quat::sIdentity(),
-            JPH::EMotionType::Dynamic, RJ::ObjectLayers::MOVING);
-        ballSettings.mRestitution = 0.8f;
-        const JPH::BodyID ball = bodies.CreateAndAddBody(
-            ballSettings, JPH::EActivation::Activate);
+        const Vector3 startPosition{0.0f, 6.0f, 0.0f};
+        RJ::SphereDesc ballSettings;
+        ballSettings.radius = radius;
+        ballSettings.position = startPosition;
+        ballSettings.restitution = 0.8f;
+        RJ::BodyHandle ball = physics.CreateSphere(ballSettings);
+        if (!ball.IsValid())
+            return 1;
         RJ::RJ_OptimizeBroadPhase(physics);
 
         SetConfigFlags(FLAG_MSAA_4X_HINT);
@@ -85,9 +85,10 @@ int main()
         {
             if (IsKeyPressed(KEY_R))
             {
-                bodies.SetPositionAndRotation(ball, startPosition,
-                    JPH::Quat::sIdentity(), JPH::EActivation::Activate);
-                bodies.SetLinearAndAngularVelocity(ball, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+                physics.SetPosition(ball, startPosition);
+                physics.SetRotation(ball, QuaternionIdentity());
+                physics.SetLinearVelocity(ball, {0.0f, 0.0f, 0.0f});
+                physics.SetAngularVelocity(ball, {0.0f, 0.0f, 0.0f});
                 accumulator = 0.0f;
             }
             accumulator += std::min(GetFrameTime(), 0.25f);
@@ -96,7 +97,7 @@ int main()
                 context.Step(RJ::timeStep);
                 accumulator -= RJ::timeStep;
             }
-            const Vector3 spherePosition = RJ::Detail::ToRaylibRVector3(bodies.GetPosition(ball));
+            const Vector3 spherePosition = physics.GetPosition(ball);
 
             BeginDrawing();
             ClearBackground(RAYWHITE);
@@ -113,8 +114,7 @@ int main()
             EndDrawing();
         }
         CloseWindow();
-        bodies.RemoveBody(ball);
-        bodies.DestroyBody(ball);
+        physics.DestroyBody(ball);
         physics.DestroyBody(floor);
     }
     context.End();

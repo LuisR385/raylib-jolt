@@ -290,7 +290,7 @@ namespace RayJolt{
 
 	struct SphereDesc {
 	public:
-		Vector3 size = { 1.0f, 1.0f, 1.0f };
+		float radius = 0.5f;
 		Vector3 position = { 0.0f, 0.0f, 0.0f };
 		Quaternion rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
 		bool isStatic = false; // trueなら静的、falseなら動的
@@ -374,6 +374,15 @@ namespace RayJolt{
 
 
 		BodyHandle CreateBox(const BoxDesc& desc = {});
+		BodyHandle CreateSphere(const SphereDesc& desc = {});
+		Vector3 GetPosition(BodyHandle body) const;
+		void SetPosition(BodyHandle body, Vector3 value);
+		Quaternion GetRotation(BodyHandle body) const;
+		void SetRotation(BodyHandle body, Quaternion value);
+		Vector3 GetLinearVelocity(BodyHandle body) const;
+		void SetLinearVelocity(BodyHandle body, Vector3 value);
+		Vector3 GetAngularVelocity(BodyHandle body) const;
+		void SetAngularVelocity(BodyHandle body, Vector3 value);
 		bool ContainsBody(BodyHandle body) const;
 		bool DestroyBody(BodyHandle& body);
 

@@ -1,6 +1,7 @@
 #include "rj.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <cmath>
 //NOTE : ONLY ONE JOLT RUNTIME.
 static RayJolt::JoltRuntime g_joltRuntime;
 
@@ -122,6 +123,69 @@ namespace RayJolt {
         bodies.DestroyBody(id);
         body = BodyHandle{};
         return true;
+    }
+
+    BodyHandle PhysicsWorld::CreateSphere(const SphereDesc& desc) {
+        if (!std::isfinite(desc.radius) || desc.radius <= 0.0f)
+            return BodyHandle{};
+        JPH::BodyCreationSettings settings(
+            new JPH::SphereShape(desc.radius),
+            Detail::ToJoltRVec3(desc.position),
+            Detail::ToJoltQuaternion(desc.rotation),
+            desc.isStatic ? JPH::EMotionType::Static : JPH::EMotionType::Dynamic,
+            desc.isStatic ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
+        settings.mRestitution = desc.restitution;
+        settings.mFriction = desc.friction;
+        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
+            desc.isStatic ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
+    }
+
+    Vector3 PhysicsWorld::GetPosition(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return Detail::ToRaylibRVector3(physicsSystem_.GetBodyInterface().GetPosition(body.GetJoltID()));
+    }
+
+    void PhysicsWorld::SetPosition(BodyHandle body, Vector3 value) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        physicsSystem_.GetBodyInterface().SetPosition(body.GetJoltID(), Detail::ToJoltRVec3(value), JPH::EActivation::Activate);
+    }
+
+    Quaternion PhysicsWorld::GetRotation(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return Detail::ToRaylibQuaternion(physicsSystem_.GetBodyInterface().GetRotation(body.GetJoltID()));
+    }
+
+    void PhysicsWorld::SetRotation(BodyHandle body, Quaternion value) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        physicsSystem_.GetBodyInterface().SetRotation(body.GetJoltID(), Detail::ToJoltQuaternion(value), JPH::EActivation::Activate);
+    }
+
+    Vector3 PhysicsWorld::GetLinearVelocity(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return Detail::ToRaylibVector3(physicsSystem_.GetBodyInterface().GetLinearVelocity(body.GetJoltID()));
+    }
+
+    void PhysicsWorld::SetLinearVelocity(BodyHandle body, Vector3 value) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        physicsSystem_.GetBodyInterface().SetLinearVelocity(body.GetJoltID(), Detail::ToJoltVec3(value));
+    }
+
+    Vector3 PhysicsWorld::GetAngularVelocity(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return Detail::ToRaylibVector3(physicsSystem_.GetBodyInterface().GetAngularVelocity(body.GetJoltID()));
+    }
+
+    void PhysicsWorld::SetAngularVelocity(BodyHandle body, Vector3 value) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        physicsSystem_.GetBodyInterface().SetAngularVelocity(body.GetJoltID(), Detail::ToJoltVec3(value));
     }
 
     BodyHandle PhysicsWorld::CreateBox(const BoxDesc& desc) {

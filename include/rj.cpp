@@ -269,6 +269,25 @@ namespace RayJolt {
         throw std::invalid_argument("Body is not a character in this world");
     }
 
+    void PhysicsWorld::MoveCharacter(BodyHandle body, Vector2 direction, float speed) {
+        for (auto& character : characters_) {
+            if (character->GetBodyID() != body.GetJoltID())
+                continue;
+            if (!std::isfinite(direction.x) || !std::isfinite(direction.y) ||
+                !std::isfinite(speed) || speed < 0.0f)
+                throw std::invalid_argument("Movement direction must be finite and speed must be finite and non-negative");
+
+            const double length = std::hypot(double(direction.x), double(direction.y));
+            const double scale = speed / std::max(1.0, length);
+            auto velocity = character->GetLinearVelocity();
+            velocity.SetX(float(direction.x * scale));
+            velocity.SetZ(float(direction.y * scale));
+            character->SetLinearVelocity(velocity);
+            return;
+        }
+        throw std::invalid_argument("Body is not a character in this world");
+    }
+
     bool PhysicsWorld::Jump(BodyHandle body, float speed) {
         for (auto& character : characters_) {
             if (character->GetBodyID() != body.GetJoltID())

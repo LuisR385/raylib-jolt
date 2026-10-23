@@ -401,6 +401,7 @@ namespace RayJolt{
 		BodyHandle CreateCharacter(const CharacterDesc& desc = {});
 		bool IsGrounded(BodyHandle character) const;
 		bool Jump(BodyHandle character, float speed = 5.0f);
+		void MoveCharacter(BodyHandle character, Vector2 direction, float speed = 3.0f);
 		Vector3 GetPosition(BodyHandle body) const;
 		void SetPosition(BodyHandle body, Vector3 value);
 		Quaternion GetRotation(BodyHandle body) const;

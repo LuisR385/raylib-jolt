@@ -116,13 +116,10 @@ int main()
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
-                Vector3 movement{
+                Vector2 movement{
                     float(IsKeyDown(KEY_RIGHT)) - float(IsKeyDown(KEY_LEFT)),
-                    0.0f,
                     float(IsKeyDown(KEY_DOWN)) - float(IsKeyDown(KEY_UP))};
-                movement = Vector3Scale(Vector3Normalize(movement), 3.0f);
-                movement.y = physics.GetLinearVelocity(player).y;
-                physics.SetLinearVelocity(player, movement);
+                physics.MoveCharacter(player, movement);
                 if (jumpRequested) {
                     physics.Jump(player);
                     jumpRequested = false;

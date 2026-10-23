@@ -117,6 +117,7 @@ int main()
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
+                physics.SetCrouching(player, IsKeyDown(KEY_C));
                 Vector2 movement{
                     float(IsKeyDown(KEY_RIGHT)) - float(IsKeyDown(KEY_LEFT)),
                     float(IsKeyDown(KEY_DOWN)) - float(IsKeyDown(KEY_UP))};
@@ -161,7 +162,7 @@ int main()
             DrawCapsule(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, SKYBLUE);
             DrawCapsuleWires(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, BLUE);
             const Vector3 playerPosition = physics.GetPosition(player);
-            const float playerHalfCylinder = characterSettings.height * 0.5f - characterSettings.radius;
+            const float playerHalfCylinder = physics.GetCharacterHeight(player) * 0.5f - characterSettings.radius;
             DrawCapsule(Vector3Add(playerPosition, {0, playerHalfCylinder, 0}),
                 Vector3Subtract(playerPosition, {0, playerHalfCylinder, 0}),
                 characterSettings.radius, 8, 16, groundInfo.state == RJ::GroundState::OnGround ? GREEN : DARKGREEN);
@@ -176,7 +177,7 @@ int main()
             DrawText("R: reset   SPACE: impulse   F: hold force   ESC: exit", 20, 54, 20, DARKGRAY);
             DrawFPS(20, 84);
             DrawText("Left click: impulse at pointed body", 20, 112, 20, DARKGRAY);
-            DrawText("Arrow keys: move green character   J: jump", 20, 140, 20, DARKGRAY);
+            DrawText("Arrow keys: move   J: jump   C: crouch", 20, 140, 20, DARKGRAY);
             DrawText(TextFormat("Character: %s   Max slope: %.0f degrees",
                 groundText, characterSettings.maxSlopeAngleDegrees), 20, 168, 20, DARKGRAY);
             EndDrawing();

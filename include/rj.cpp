@@ -95,8 +95,8 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::Shutdown() {
-        for (auto& character : characters_)
-            character->RemoveFromPhysicsSystem();
+        for (auto& state : characters_)
+            state.character->RemoveFromPhysicsSystem();
         characters_.clear();
         jumpingCharacters_.clear();
         JPH::BodyIDVector bodyIDs;
@@ -125,8 +125,8 @@ namespace RayJolt {
         auto& bodies = physicsSystem_.GetBodyInterface();
         const auto id = body.GetJoltID();
         for (auto it = characters_.begin(); it != characters_.end(); ++it) {
-            if ((*it)->GetBodyID() == id) {
-                (*it)->RemoveFromPhysicsSystem();
+            if (it->character->GetBodyID() == id) {
+                it->character->RemoveFromPhysicsSystem();
                 characters_.erase(it);
                 jumpingCharacters_.erase(std::remove(jumpingCharacters_.begin(), jumpingCharacters_.end(), id), jumpingCharacters_.end());
                 body = BodyHandle{};
@@ -259,7 +259,10 @@ namespace RayJolt {
         settings.mSupportingVolume = JPH::Plane(JPH::Vec3::sAxisY(), halfCylinderHeight);
         JPH::Ref<JPH::Character> character = new JPH::Character(
             &settings, Detail::ToJoltRVec3(desc.position), JPH::Quat::sIdentity(), 0, &physicsSystem_);
-        characters_.push_back(character);
+        const float crouchingHeight = (desc.height + 2.0f * desc.radius) * 0.5f;
+        characters_.push_back({character, settings.mShape,
+            new JPH::CapsuleShape(halfCylinderHeight * 0.5f, desc.radius),
+            desc.height, crouchingHeight, desc.radius});
         character->AddToPhysicsSystem();
         return BodyHandle(character->GetBodyID());
     }
@@ -269,7 +272,8 @@ namespace RayJolt {
     }
 
     CharacterGroundInfo PhysicsWorld::GetCharacterGroundInfo(BodyHandle body) const {
-        for (const auto& character : characters_) {
+        for (const auto& state : characters_) {
+            const auto& character = state.character;
             if (character->GetBodyID() != body.GetJoltID())
                 continue;
             CharacterGroundInfo info;
@@ -298,7 +302,8 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::MoveCharacter(BodyHandle body, Vector2 direction, float speed) {
-        for (auto& character : characters_) {
+        for (auto& state : characters_) {
+            auto& character = state.character;
             if (character->GetBodyID() != body.GetJoltID())
                 continue;
             if (!std::isfinite(direction.x) || !std::isfinite(direction.y) ||
@@ -326,8 +331,48 @@ namespace RayJolt {
         throw std::invalid_argument("Body is not a character in this world");
     }
 
+    bool PhysicsWorld::SetCrouching(BodyHandle body, bool crouching) {
+        for (auto& state : characters_) {
+            if (state.character->GetBodyID() != body.GetJoltID())
+                continue;
+            if (state.crouching == crouching)
+                return true;
+
+            const float oldHeight = state.crouching ? state.crouchingHeight : state.standingHeight;
+            const float newHeight = crouching ? state.crouchingHeight : state.standingHeight;
+            const auto oldPosition = state.character->GetPosition();
+            state.character->SetPosition(oldPosition + JPH::RVec3(0, (newHeight - oldHeight) * 0.5f, 0));
+            const auto& shape = crouching ? state.crouchingShape : state.standingShape;
+            const float allowedPenetration = physicsSystem_.GetPhysicsSettings().mPenetrationSlop * 1.5f;
+            if (!state.character->SetShape(shape, allowedPenetration)) {
+                state.character->SetPosition(oldPosition);
+                return false;
+            }
+            state.crouching = crouching;
+            state.character->SetSupportingVolume(JPH::Plane(JPH::Vec3::sAxisY(), newHeight * 0.5f - state.radius));
+            state.character->PostSimulation(0.05f);
+            return true;
+        }
+        throw std::invalid_argument("Body is not a character in this world");
+    }
+
+    bool PhysicsWorld::IsCrouching(BodyHandle body) const {
+        for (const auto& state : characters_)
+            if (state.character->GetBodyID() == body.GetJoltID())
+                return state.crouching;
+        throw std::invalid_argument("Body is not a character in this world");
+    }
+
+    float PhysicsWorld::GetCharacterHeight(BodyHandle body) const {
+        for (const auto& state : characters_)
+            if (state.character->GetBodyID() == body.GetJoltID())
+                return state.crouching ? state.crouchingHeight : state.standingHeight;
+        throw std::invalid_argument("Body is not a character in this world");
+    }
+
     bool PhysicsWorld::Jump(BodyHandle body, float speed) {
-        for (auto& character : characters_) {
+        for (auto& state : characters_) {
+            auto& character = state.character;
             if (character->GetBodyID() != body.GetJoltID())
                 continue;
             if (!std::isfinite(speed) || speed <= 0.0f)
@@ -349,7 +394,8 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::UpdateCharacterContacts() {
-        for (auto& character : characters_) {
+        for (auto& state : characters_) {
+            auto& character = state.character;
             character->PostSimulation(0.05f);
             if (character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround ||
                 character->GetLinearVelocity().GetY() <= character->GetGroundVelocity().GetY()) {

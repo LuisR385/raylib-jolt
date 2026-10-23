@@ -265,12 +265,18 @@ namespace RayJolt{
 
 	//====================Start declare Struct/Class====================
 
+	enum class MotionType {
+		Static,
+		Dynamic,
+		Kinematic
+	};
+
 	struct BoxDesc {
 	public:
         Vector3 size = { 1.0f, 1.0f, 1.0f };
         Vector3 position = { 0.0f, 0.0f, 0.0f };
         Quaternion rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
-        bool isStatic = false; // trueなら静的、falseなら動的
+        MotionType motionType = MotionType::Dynamic;
         float restitution = 0.2f;
         float friction = 0.2f;
 
@@ -291,7 +297,7 @@ namespace RayJolt{
 		float radius = 0.5f;
 		Vector3 position = { 0.0f, 0.0f, 0.0f };
 		Quaternion rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
-		bool isStatic = false; // trueなら静的、falseなら動的
+		MotionType motionType = MotionType::Dynamic;
 		float restitution = 0.2f;
 		float friction = 0.2f;
 
@@ -311,7 +317,7 @@ namespace RayJolt{
 		float height = 1.8f;
 		Vector3 position = { 0.0f, 0.0f, 0.0f };
 		Quaternion rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
-		bool isStatic = false;
+		MotionType motionType = MotionType::Dynamic;
 		float restitution = 0.2f;
 		float friction = 0.2f;
 	};
@@ -424,6 +430,7 @@ namespace RayJolt{
 		float GetCharacterHeight(BodyHandle character) const;
 		Vector3 GetPosition(BodyHandle body) const;
 		void SetPosition(BodyHandle body, Vector3 value);
+		void MoveKinematic(BodyHandle body, Vector3 position, Quaternion rotation, float deltaTime);
 		Quaternion GetRotation(BodyHandle body) const;
 		void SetRotation(BodyHandle body, Quaternion value);
 		Vector3 GetLinearVelocity(BodyHandle body) const;

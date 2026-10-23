@@ -53,7 +53,7 @@ int main()
         RJ::BoxDesc floorSettings;
         floorSettings.size = {20.0f, 1.0f, 20.0f};
         floorSettings.position = {0.0f, -0.5f, 0.0f};
-        floorSettings.isStatic = true;
+        floorSettings.motionType = RJ::MotionType::Static;
         floorSettings.restitution = 0.8f;
         RJ::BodyHandle floor = physics.CreateBox(floorSettings);
         if (!floor.IsValid())
@@ -79,6 +79,13 @@ int main()
         RJ::BodyHandle player = physics.CreateCharacter(characterSettings);
         if (!player.IsValid())
             return 1;
+        RJ::BoxDesc platformSettings;
+        platformSettings.size = {3.0f, 0.4f, 3.0f};
+        platformSettings.position = {0.0f, 1.0f, -5.0f};
+        platformSettings.motionType = RJ::MotionType::Kinematic;
+        RJ::BodyHandle platform = physics.CreateBox(platformSettings);
+        if (!platform.IsValid())
+            return 1;
         RJ::RJ_OptimizeBroadPhase(physics);
 
         SetConfigFlags(FLAG_MSAA_4X_HINT);
@@ -92,6 +99,7 @@ int main()
         camera.projection = CAMERA_PERSPECTIVE;
 
         float accumulator = 0.0f;
+        float platformTime = 0.0f;
         bool jumpRequested = false;
         while (!WindowShouldClose())
         {
@@ -109,6 +117,9 @@ int main()
                 physics.SetLinearVelocity(player, {0.0f, 0.0f, 0.0f});
                 accumulator = 0.0f;
                 jumpRequested = false;
+                platformTime = 0.0f;
+                physics.SetPosition(platform, platformSettings.position);
+                physics.SetLinearVelocity(platform, {0.0f, 0.0f, 0.0f});
             }
             if (IsKeyPressed(KEY_SPACE))
                 physics.AddImpulse(ball, {0.0f, 3000.0f, 0.0f});
@@ -117,6 +128,10 @@ int main()
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
+                platformTime += RJ::timeStep;
+                Vector3 platformTarget = platformSettings.position;
+                platformTarget.x += sinf(platformTime) * 3.0f;
+                physics.MoveKinematic(platform, platformTarget, QuaternionIdentity(), RJ::timeStep);
                 physics.SetCrouching(player, IsKeyDown(KEY_C));
                 Vector2 movement{
                     float(IsKeyDown(KEY_RIGHT)) - float(IsKeyDown(KEY_LEFT)),
@@ -157,6 +172,8 @@ int main()
             DrawCube({0.0f, -0.5f, 0.0f}, 20.0f, 1.0f, 20.0f, LIGHTGRAY);
             DrawCubeWires({0.0f, -0.5f, 0.0f}, 20.0f, 1.0f, 20.0f, GRAY);
             DrawGrid(20, 1.0f);
+            DrawCubeV(physics.GetPosition(platform), platformSettings.size, BEIGE);
+            DrawCubeWiresV(physics.GetPosition(platform), platformSettings.size, BROWN);
             DrawSphere(spherePosition, radius, ORANGE);
             DrawSphereWires(spherePosition, radius, 16, 16, MAROON);
             DrawCapsule(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, SKYBLUE);
@@ -186,6 +203,7 @@ int main()
         physics.DestroyBody(ball);
         physics.DestroyBody(capsule);
         physics.DestroyBody(player);
+        physics.DestroyBody(platform);
         physics.DestroyBody(floor);
     }
     context.End();

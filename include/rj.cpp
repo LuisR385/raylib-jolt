@@ -9,6 +9,15 @@ static RayJolt::JoltRuntime g_joltRuntime;
 
 namespace RayJolt {
 
+    static JPH::EMotionType ToJoltMotionType(MotionType type) {
+        switch (type) {
+        case MotionType::Static: return JPH::EMotionType::Static;
+        case MotionType::Dynamic: return JPH::EMotionType::Dynamic;
+        case MotionType::Kinematic: return JPH::EMotionType::Kinematic;
+        }
+        throw std::invalid_argument("Unknown motion type");
+    }
+
     JoltRuntime::~JoltRuntime() {
         if (isInitialized)
             End();
@@ -143,16 +152,17 @@ namespace RayJolt {
     BodyHandle PhysicsWorld::CreateSphere(const SphereDesc& desc) {
         if (!std::isfinite(desc.radius) || desc.radius <= 0.0f)
             return BodyHandle{};
+        const auto motionType = ToJoltMotionType(desc.motionType);
         JPH::BodyCreationSettings settings(
             new JPH::SphereShape(desc.radius),
             Detail::ToJoltRVec3(desc.position),
             Detail::ToJoltQuaternion(desc.rotation),
-            desc.isStatic ? JPH::EMotionType::Static : JPH::EMotionType::Dynamic,
-            desc.isStatic ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
+            motionType,
+            desc.motionType == MotionType::Static ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
         settings.mRestitution = desc.restitution;
         settings.mFriction = desc.friction;
         return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
-            desc.isStatic ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
+            desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
     }
 
     BodyHandle PhysicsWorld::CreateCapsule(const CapsuleDesc& desc) {
@@ -160,6 +170,7 @@ namespace RayJolt {
             !std::isfinite(desc.height) || desc.height < 2.0f * desc.radius)
             return BodyHandle{};
 
+        const auto motionType = ToJoltMotionType(desc.motionType);
         const float halfHeight = desc.height * 0.5f - desc.radius;
         JPH::RefConst<JPH::Shape> shape;
         if (halfHeight == 0.0f)
@@ -171,12 +182,12 @@ namespace RayJolt {
             shape.GetPtr(),
             Detail::ToJoltRVec3(desc.position),
             Detail::ToJoltQuaternion(desc.rotation),
-            desc.isStatic ? JPH::EMotionType::Static : JPH::EMotionType::Dynamic,
-            desc.isStatic ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
+            motionType,
+            desc.motionType == MotionType::Static ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
         settings.mRestitution = desc.restitution;
         settings.mFriction = desc.friction;
         return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
-            desc.isStatic ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
+            desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
     }
 
     Vector3 PhysicsWorld::GetPosition(BodyHandle body) const {
@@ -189,6 +200,26 @@ namespace RayJolt {
         if (!ContainsBody(body))
             throw std::invalid_argument("Body does not exist in this world");
         physicsSystem_.GetBodyInterface().SetPosition(body.GetJoltID(), Detail::ToJoltRVec3(value), JPH::EActivation::Activate);
+    }
+
+    void PhysicsWorld::MoveKinematic(BodyHandle body, Vector3 position, Quaternion rotation, float deltaTime) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        if (bodies.GetMotionType(body.GetJoltID()) != JPH::EMotionType::Kinematic)
+            throw std::invalid_argument("MoveKinematic requires a kinematic body");
+        if (!std::isfinite(deltaTime) || deltaTime <= 0.0f ||
+            !std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z) ||
+            !std::isfinite(rotation.x) || !std::isfinite(rotation.y) ||
+            !std::isfinite(rotation.z) || !std::isfinite(rotation.w))
+            throw std::invalid_argument("Target transform must be finite and deltaTime must be positive");
+        const double length = std::sqrt(double(rotation.x) * rotation.x + double(rotation.y) * rotation.y +
+            double(rotation.z) * rotation.z + double(rotation.w) * rotation.w);
+        if (length == 0.0)
+            throw std::invalid_argument("Rotation must not be a zero quaternion");
+        const JPH::Quat normalized(float(rotation.x / length), float(rotation.y / length),
+            float(rotation.z / length), float(rotation.w / length));
+        bodies.MoveKinematic(body.GetJoltID(), Detail::ToJoltRVec3(position), normalized, deltaTime);
     }
 
     Quaternion PhysicsWorld::GetRotation(BodyHandle body) const {
@@ -442,8 +473,8 @@ namespace RayJolt {
         JPH::Vec3 halfExtents(desc.size.x * 0.5f, desc.size.y * 0.5f, desc.size.z * 0.5f);
 
         //Set motionType / Object of layer
-        JPH::EMotionType motionType = desc.isStatic ? JPH::EMotionType::Static : JPH::EMotionType::Dynamic;
-        JPH::ObjectLayer layer = desc.isStatic ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING;
+        JPH::EMotionType motionType = ToJoltMotionType(desc.motionType);
+        JPH::ObjectLayer layer = desc.motionType == MotionType::Static ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING;
 
         //setting
         JPH::BodyCreationSettings settings(
@@ -457,8 +488,7 @@ namespace RayJolt {
         settings.mRestitution = desc.restitution;
         settings.mFriction = desc.friction;
 
-        //NOTE : isStatic->true = DontActivate.
-        JPH::EActivation activation = desc.isStatic ? JPH::EActivation::DontActivate : JPH::EActivation::Activate;
+        JPH::EActivation activation = desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate;
 
         JPH::BodyID jphId = physicsSystem_.GetBodyInterface().CreateAndAddBody(settings, activation);
         return BodyHandle(jphId);

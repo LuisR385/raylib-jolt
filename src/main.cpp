@@ -74,6 +74,7 @@ int main()
         if (!capsule.IsValid())
             return 1;
         RJ::CharacterDesc characterSettings;
+        characterSettings.maxSlopeAngleDegrees = 45.0f;
         characterSettings.position = {-3.0f, 3.0f, 0.0f};
         RJ::BodyHandle player = physics.CreateCharacter(characterSettings);
         if (!player.IsValid())
@@ -176,7 +177,8 @@ int main()
             DrawFPS(20, 84);
             DrawText("Left click: impulse at pointed body", 20, 112, 20, DARKGRAY);
             DrawText("Arrow keys: move green character   J: jump", 20, 140, 20, DARKGRAY);
-            DrawText(TextFormat("Character: %s", groundText), 20, 168, 20, DARKGRAY);
+            DrawText(TextFormat("Character: %s   Max slope: %.0f degrees",
+                groundText, characterSettings.maxSlopeAngleDegrees), 20, 168, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

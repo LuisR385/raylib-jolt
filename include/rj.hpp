@@ -320,6 +320,7 @@ namespace RayJolt{
 		float radius = 0.3f;
 		float height = 1.8f;
 		float mass = 80.0f;
+		float maxSlopeAngleDegrees = 50.0f;
 		Vector3 position = { 0.0f, 0.0f, 0.0f };
 	};
 

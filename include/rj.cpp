@@ -243,6 +243,8 @@ namespace RayJolt {
         if (!std::isfinite(desc.radius) || desc.radius <= 0.0f ||
             !std::isfinite(desc.height) || desc.height <= 2.0f * desc.radius ||
             !std::isfinite(desc.mass) || desc.mass <= 0.0f ||
+            !std::isfinite(desc.maxSlopeAngleDegrees) || desc.maxSlopeAngleDegrees < 1.0f ||
+            desc.maxSlopeAngleDegrees > 90.0f ||
             !std::isfinite(desc.position.x) || !std::isfinite(desc.position.y) ||
             !std::isfinite(desc.position.z) ||
             physicsSystem_.GetNumBodies() >= physicsSystem_.GetMaxBodies())
@@ -252,6 +254,7 @@ namespace RayJolt {
         JPH::CharacterSettings settings;
         settings.mShape = new JPH::CapsuleShape(halfCylinderHeight, desc.radius);
         settings.mMass = desc.mass;
+        settings.mMaxSlopeAngle = desc.maxSlopeAngleDegrees * DEG2RAD;
         settings.mLayer = ObjectLayers::MOVING;
         settings.mSupportingVolume = JPH::Plane(JPH::Vec3::sAxisY(), halfCylinderHeight);
         JPH::Ref<JPH::Character> character = new JPH::Character(
@@ -307,6 +310,16 @@ namespace RayJolt {
             auto velocity = character->GetLinearVelocity();
             velocity.SetX(float(direction.x * scale));
             velocity.SetZ(float(direction.y * scale));
+            const auto ground = GetCharacterGroundInfo(body);
+            if (ground.state == GroundState::OnSteepGround || ground.state == GroundState::NotSupported) {
+                const JPH::Vec3 normal(ground.normal.x, 0.0f, ground.normal.z);
+                JPH::Vec3 horizontal(velocity.GetX(), 0.0f, velocity.GetZ());
+                const float intoSurface = normal.Dot(horizontal);
+                if (intoSurface < 0.0f)
+                    horizontal -= normal * (intoSurface / normal.LengthSq());
+                velocity.SetX(horizontal.GetX());
+                velocity.SetZ(horizontal.GetZ());
+            }
             character->SetLinearVelocity(velocity);
             return;
         }

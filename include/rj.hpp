@@ -476,6 +476,7 @@ namespace RayJolt{
 			float crouchingHeight;
 			float radius;
 			bool crouching = false;
+			JPH::Vec3 groundVelocity = JPH::Vec3::sZero();
 		};
 		std::vector<CharacterState> characters_;
 		std::vector<JPH::BodyID> jumpingCharacters_;

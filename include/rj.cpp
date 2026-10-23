@@ -200,6 +200,13 @@ namespace RayJolt {
         if (!ContainsBody(body))
             throw std::invalid_argument("Body does not exist in this world");
         physicsSystem_.GetBodyInterface().SetPosition(body.GetJoltID(), Detail::ToJoltRVec3(value), JPH::EActivation::Activate);
+        for (auto& state : characters_) {
+            if (state.character->GetBodyID() == body.GetJoltID()) {
+                state.groundVelocity = JPH::Vec3::sZero();
+                state.character->PostSimulation(0.05f);
+                break;
+            }
+        }
     }
 
     void PhysicsWorld::MoveKinematic(BodyHandle body, Vector3 position, Quaternion rotation, float deltaTime) {
@@ -356,6 +363,16 @@ namespace RayJolt {
                 velocity.SetX(horizontal.GetX());
                 velocity.SetZ(horizontal.GetZ());
             }
+            const bool jumping = std::find(jumpingCharacters_.begin(), jumpingCharacters_.end(), body.GetJoltID()) != jumpingCharacters_.end();
+            if (ground.state == GroundState::OnGround && !jumping) {
+                const auto groundVelocity = physicsSystem_.GetBodyInterface().GetPointVelocity(
+                    ground.body.GetJoltID(), Detail::ToJoltRVec3(ground.position));
+                if (velocity.GetY() - state.groundVelocity.GetY() <= 0.1f)
+                    velocity.SetY(groundVelocity.GetY());
+                state.groundVelocity = groundVelocity;
+            }
+            velocity.SetX(velocity.GetX() + state.groundVelocity.GetX());
+            velocity.SetZ(velocity.GetZ() + state.groundVelocity.GetZ());
             character->SetLinearVelocity(velocity);
             return;
         }
@@ -415,7 +432,13 @@ namespace RayJolt {
             if (character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround)
                 return false;
             auto velocity = character->GetLinearVelocity();
-            velocity.SetY(character->GetGroundVelocity().GetY() + speed);
+            const auto groundBody = character->GetGroundBodyID();
+            const auto groundVelocity = physicsSystem_.GetBodyInterface().GetPointVelocity(
+                groundBody, character->GetGroundPosition());
+            velocity.SetX(velocity.GetX() + groundVelocity.GetX() - state.groundVelocity.GetX());
+            velocity.SetZ(velocity.GetZ() + groundVelocity.GetZ() - state.groundVelocity.GetZ());
+            velocity.SetY(groundVelocity.GetY() + speed);
+            state.groundVelocity = groundVelocity;
             jumpingCharacters_.push_back(id);
             character->SetLinearVelocity(velocity);
             character->Activate();

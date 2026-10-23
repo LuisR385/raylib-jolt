@@ -123,6 +123,12 @@ int main()
             }
             if (IsKeyPressed(KEY_SPACE))
                 physics.AddImpulse(ball, {0.0f, 3000.0f, 0.0f});
+            if (IsKeyPressed(KEY_P)) {
+                Vector3 position = physics.GetPosition(platform);
+                position.y += platformSettings.size.y * 0.5f + physics.GetCharacterHeight(player) * 0.5f + 0.02f;
+                physics.SetPosition(player, position);
+                physics.SetLinearVelocity(player, {0.0f, 0.0f, 0.0f});
+            }
             if (IsKeyPressed(KEY_J))
                 jumpRequested = true;
             accumulator += std::min(GetFrameTime(), 0.25f);
@@ -194,7 +200,7 @@ int main()
             DrawText("R: reset   SPACE: impulse   F: hold force   ESC: exit", 20, 54, 20, DARKGRAY);
             DrawFPS(20, 84);
             DrawText("Left click: impulse at pointed body", 20, 112, 20, DARKGRAY);
-            DrawText("Arrow keys: move   J: jump   C: crouch", 20, 140, 20, DARKGRAY);
+            DrawText("Arrows: move   J: jump   C: crouch   P: ride platform", 20, 140, 20, DARKGRAY);
             DrawText(TextFormat("Character: %s   Max slope: %.0f degrees",
                 groundText, characterSettings.maxSlopeAngleDegrees), 20, 168, 20, DARKGRAY);
             EndDrawing();

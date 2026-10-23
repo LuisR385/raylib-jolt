@@ -262,9 +262,34 @@ namespace RayJolt {
     }
 
     bool PhysicsWorld::IsGrounded(BodyHandle body) const {
+        return GetCharacterGroundInfo(body).state == GroundState::OnGround;
+    }
+
+    CharacterGroundInfo PhysicsWorld::GetCharacterGroundInfo(BodyHandle body) const {
         for (const auto& character : characters_) {
-            if (character->GetBodyID() == body.GetJoltID())
-                return character->GetGroundState() == JPH::CharacterBase::EGroundState::OnGround;
+            if (character->GetBodyID() != body.GetJoltID())
+                continue;
+            CharacterGroundInfo info;
+            switch (character->GetGroundState()) {
+            case JPH::CharacterBase::EGroundState::OnGround:
+                info.state = GroundState::OnGround;
+                break;
+            case JPH::CharacterBase::EGroundState::OnSteepGround:
+                info.state = GroundState::OnSteepGround;
+                break;
+            case JPH::CharacterBase::EGroundState::NotSupported:
+                info.state = GroundState::NotSupported;
+                break;
+            case JPH::CharacterBase::EGroundState::InAir:
+                return info;
+            }
+            info.body = BodyHandle(character->GetGroundBodyID());
+            if (!ContainsBody(info.body))
+                return CharacterGroundInfo{};
+            info.position = Detail::ToRaylibRVector3(character->GetGroundPosition());
+            info.normal = Detail::ToRaylibVector3(character->GetGroundNormal());
+            info.velocity = Detail::ToRaylibVector3(character->GetGroundVelocity());
+            return info;
         }
         throw std::invalid_argument("Body is not a character in this world");
     }

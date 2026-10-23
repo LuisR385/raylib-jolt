@@ -339,6 +339,21 @@ namespace RayJolt{
 	};
 
 
+	enum class GroundState {
+		OnGround,
+		OnSteepGround,
+		NotSupported,
+		InAir
+	};
+
+	struct CharacterGroundInfo {
+		GroundState state = GroundState::InAir;
+		BodyHandle body;
+		Vector3 position = {};
+		Vector3 normal = {};
+		Vector3 velocity = {};
+	};
+
 	struct RayHit {
 		BodyHandle body;
 		Vector3 point = {};
@@ -400,6 +415,7 @@ namespace RayJolt{
 		BodyHandle CreateCapsule(const CapsuleDesc& desc = {});
 		BodyHandle CreateCharacter(const CharacterDesc& desc = {});
 		bool IsGrounded(BodyHandle character) const;
+		CharacterGroundInfo GetCharacterGroundInfo(BodyHandle character) const;
 		bool Jump(BodyHandle character, float speed = 5.0f);
 		void MoveCharacter(BodyHandle character, Vector2 direction, float speed = 3.0f);
 		Vector3 GetPosition(BodyHandle body) const;

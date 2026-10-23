@@ -136,6 +136,14 @@ int main()
                 {0.0f, halfCylinderHeight, 0.0f}, physics.GetRotation(capsule));
             const Vector3 capsuleTop = Vector3Add(capsulePosition, capsuleOffset);
             const Vector3 capsuleBottom = Vector3Subtract(capsulePosition, capsuleOffset);
+            const auto groundInfo = physics.GetCharacterGroundInfo(player);
+            const char* groundText = "In air";
+            switch (groundInfo.state) {
+            case RJ::GroundState::OnGround: groundText = "On ground"; break;
+            case RJ::GroundState::OnSteepGround: groundText = "On steep ground"; break;
+            case RJ::GroundState::NotSupported: groundText = "Touching, not supported"; break;
+            case RJ::GroundState::InAir: break;
+            }
             RJ::RayHit mouseHit;
             const bool hitBody = physics.CastRay(GetScreenToWorldRay(GetMousePosition(), camera), 100.0f, mouseHit);
             if (hitBody && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
@@ -155,7 +163,9 @@ int main()
             const float playerHalfCylinder = characterSettings.height * 0.5f - characterSettings.radius;
             DrawCapsule(Vector3Add(playerPosition, {0, playerHalfCylinder, 0}),
                 Vector3Subtract(playerPosition, {0, playerHalfCylinder, 0}),
-                characterSettings.radius, 8, 16, physics.IsGrounded(player) ? GREEN : DARKGREEN);
+                characterSettings.radius, 8, 16, groundInfo.state == RJ::GroundState::OnGround ? GREEN : DARKGREEN);
+            if (groundInfo.body.IsValid())
+                DrawLine3D(groundInfo.position, Vector3Add(groundInfo.position, groundInfo.normal), PURPLE);
             if (hitBody) {
                 DrawSphere(mouseHit.point, 0.08f, RED);
                 DrawLine3D(mouseHit.point, Vector3Add(mouseHit.point, mouseHit.normal), RED);
@@ -166,6 +176,7 @@ int main()
             DrawFPS(20, 84);
             DrawText("Left click: impulse at pointed body", 20, 112, 20, DARKGRAY);
             DrawText("Arrow keys: move green character   J: jump", 20, 140, 20, DARKGRAY);
+            DrawText(TextFormat("Character: %s", groundText), 20, 168, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

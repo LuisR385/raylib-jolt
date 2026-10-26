@@ -137,6 +137,29 @@ namespace RayJolt {
         return Detail::ToRaylibVector3(physicsSystem_.GetGravity());
     }
 
+    void PhysicsWorld::SetGravityFactor(BodyHandle body, float factor) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        if (!std::isfinite(factor) || factor < 0.0f)
+            throw std::invalid_argument("Gravity factor must be finite and non-negative");
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        if (bodies.GetMotionType(body.GetJoltID()) != JPH::EMotionType::Dynamic)
+            throw std::invalid_argument("Gravity factor requires a dynamic body");
+        if (bodies.GetGravityFactor(body.GetJoltID()) == factor)
+            return;
+        bodies.SetGravityFactor(body.GetJoltID(), factor);
+        bodies.ActivateBody(body.GetJoltID());
+    }
+
+    float PhysicsWorld::GetGravityFactor(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        const auto& bodies = physicsSystem_.GetBodyInterface();
+        if (bodies.GetMotionType(body.GetJoltID()) != JPH::EMotionType::Dynamic)
+            throw std::invalid_argument("Gravity factor requires a dynamic body");
+        return bodies.GetGravityFactor(body.GetJoltID());
+    }
+
     bool PhysicsWorld::ContainsBody(BodyHandle body) const {
         if (!body.IsValid())
             return false;

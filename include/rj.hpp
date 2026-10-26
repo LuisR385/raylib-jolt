@@ -413,6 +413,8 @@ namespace RayJolt{
 		void Shutdown();
 		void SetGravity(Vector3 gravity);
 		Vector3 GetGravity() const;
+		void SetGravityFactor(BodyHandle body, float factor);
+		float GetGravityFactor(BodyHandle body) const;
 
 		void OptimizeBroadPhase() {
 			physicsSystem_.OptimizeBroadPhase();

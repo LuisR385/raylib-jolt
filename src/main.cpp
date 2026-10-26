@@ -136,6 +136,8 @@ int main()
             }
             if (IsKeyPressed(KEY_J))
                 jumpRequested = true;
+            if (IsKeyPressed(KEY_H))
+                physics.SetGravityFactor(ball, physics.GetGravityFactor(ball) == 0.0f ? 1.0f : 0.0f);
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
@@ -209,6 +211,7 @@ int main()
             DrawText(TextFormat("Character: %s   Max slope: %.0f degrees",
                 groundText, characterSettings.maxSlopeAngleDegrees), 20, 168, 20, DARKGRAY);
             DrawText(TextFormat("G: toggle gravity   Y: %.2f m/s^2", physics.GetGravity().y), 20, 196, 20, DARKGRAY);
+            DrawText(TextFormat("H: toggle ball gravity   Factor: %.1f", physics.GetGravityFactor(ball)), 20, 224, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

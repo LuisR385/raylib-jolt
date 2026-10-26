@@ -55,7 +55,7 @@ int main()
         floorSettings.size = {20.0f, 1.0f, 20.0f};
         floorSettings.position = {0.0f, -0.5f, 0.0f};
         floorSettings.motionType = RJ::MotionType::Static;
-        floorSettings.restitution = 0.8f;
+        floorSettings.restitution = 0.0f;
         RJ::BodyHandle floor = physics.CreateBox(floorSettings);
         if (!floor.IsValid())
             return 1;
@@ -138,6 +138,8 @@ int main()
                 jumpRequested = true;
             if (IsKeyPressed(KEY_H))
                 physics.SetGravityFactor(ball, physics.GetGravityFactor(ball) == 0.0f ? 1.0f : 0.0f);
+            if (IsKeyPressed(KEY_B))
+                physics.SetRestitution(ball, physics.GetRestitution(ball) == 0.0f ? 0.8f : 0.0f);
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
@@ -219,6 +221,7 @@ int main()
                 groundText, characterSettings.maxSlopeAngleDegrees), 20, 168, 20, DARKGRAY);
             DrawText(TextFormat("G: toggle gravity   Y: %.2f m/s^2", physics.GetGravity().y), 20, 196, 20, DARKGRAY);
             DrawText(TextFormat("H: toggle ball gravity   Factor: %.1f", physics.GetGravityFactor(ball)), 20, 224, 20, DARKGRAY);
+            DrawText(TextFormat("B: toggle ball bounce   Restitution: %.1f", physics.GetRestitution(ball)), 20, 252, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

@@ -415,6 +415,10 @@ namespace RayJolt{
 		Vector3 GetGravity() const;
 		void SetGravityFactor(BodyHandle body, float factor);
 		float GetGravityFactor(BodyHandle body) const;
+		void SetFriction(BodyHandle body, float friction);
+		float GetFriction(BodyHandle body) const;
+		void SetRestitution(BodyHandle body, float restitution);
+		float GetRestitution(BodyHandle body) const;
 
 		void OptimizeBroadPhase() {
 			physicsSystem_.OptimizeBroadPhase();

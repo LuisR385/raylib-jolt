@@ -160,6 +160,46 @@ namespace RayJolt {
         return bodies.GetGravityFactor(body.GetJoltID());
     }
 
+    void PhysicsWorld::SetFriction(BodyHandle body, float value) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        if (!std::isfinite(value) || value < 0.0f)
+            throw std::invalid_argument("Friction must be finite and non-negative");
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        if (bodies.GetFriction(body.GetJoltID()) == value)
+            return;
+        bodies.SetFriction(body.GetJoltID(), value);
+        bodies.InvalidateContactCache(body.GetJoltID());
+        if (bodies.GetMotionType(body.GetJoltID()) == JPH::EMotionType::Dynamic)
+            bodies.ActivateBody(body.GetJoltID());
+    }
+
+    float PhysicsWorld::GetFriction(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return physicsSystem_.GetBodyInterface().GetFriction(body.GetJoltID());
+    }
+
+    void PhysicsWorld::SetRestitution(BodyHandle body, float value) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        if (!std::isfinite(value) || value < 0.0f || value > 1.0f)
+            throw std::invalid_argument("Restitution must be between zero and one");
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        if (bodies.GetRestitution(body.GetJoltID()) == value)
+            return;
+        bodies.SetRestitution(body.GetJoltID(), value);
+        bodies.InvalidateContactCache(body.GetJoltID());
+        if (bodies.GetMotionType(body.GetJoltID()) == JPH::EMotionType::Dynamic)
+            bodies.ActivateBody(body.GetJoltID());
+    }
+
+    float PhysicsWorld::GetRestitution(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return physicsSystem_.GetBodyInterface().GetRestitution(body.GetJoltID());
+    }
+
     bool PhysicsWorld::ContainsBody(BodyHandle body) const {
         if (!body.IsValid())
             return false;

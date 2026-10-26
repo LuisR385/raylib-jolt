@@ -501,7 +501,7 @@ namespace RayJolt {
         }
     }
 
-    bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, RayHit& hit) const {
+    bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, RayHit& hit, BodyHandle ignoreBody) const {
         hit = {};
         if (!std::isfinite(maxDistance) || maxDistance <= 0.0f ||
             !std::isfinite(ray.position.x) || !std::isfinite(ray.position.y) ||
@@ -518,7 +518,8 @@ namespace RayJolt {
             float(ray.direction.z / length * maxDistance));
         const JPH::RRayCast joltRay(Detail::ToJoltRVec3(ray.position), displacement);
         JPH::RayCastResult result;
-        if (!physicsSystem_.GetNarrowPhaseQuery().CastRay(joltRay, result))
+        const JPH::IgnoreSingleBodyFilter bodyFilter(ignoreBody.GetJoltID());
+        if (!physicsSystem_.GetNarrowPhaseQuery().CastRay(joltRay, result, {}, {}, bodyFilter))
             return false;
 
         JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), result.mBodyID);

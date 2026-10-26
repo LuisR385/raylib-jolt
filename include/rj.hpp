@@ -443,7 +443,7 @@ namespace RayJolt{
 		void SetAngularVelocity(BodyHandle body, Vector3 value);
 		void AddForce(BodyHandle body, Vector3 force);
 		void AddImpulse(BodyHandle body, Vector3 impulse);
-		bool CastRay(const Ray& ray, float maxDistance, RayHit& hit) const;
+		bool CastRay(const Ray& ray, float maxDistance, RayHit& hit, BodyHandle ignoreBody = {}) const;
 		bool ContainsBody(BodyHandle body) const;
 		bool DestroyBody(BodyHandle& body);
 

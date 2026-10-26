@@ -178,6 +178,10 @@ int main()
             const bool hitBody = physics.CastRay(GetScreenToWorldRay(GetMousePosition(), camera), 100.0f, mouseHit);
             if (hitBody && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
                 physics.AddImpulse(mouseHit.body, {0.0f, 3000.0f, 0.0f});
+            const Vector3 playerPosition = physics.GetPosition(player);
+            const Ray footRay{playerPosition, {0.0f, -1.0f, 0.0f}};
+            RJ::RayHit footHit;
+            const bool hitBelowPlayer = physics.CastRay(footRay, 5.0f, footHit, player);
 
             BeginDrawing();
             ClearBackground(RAYWHITE);
@@ -191,13 +195,16 @@ int main()
             DrawSphereWires(spherePosition, radius, 16, 16, MAROON);
             DrawCapsule(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, SKYBLUE);
             DrawCapsuleWires(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, BLUE);
-            const Vector3 playerPosition = physics.GetPosition(player);
             const float playerHalfCylinder = physics.GetCharacterHeight(player) * 0.5f - characterSettings.radius;
             DrawCapsule(Vector3Add(playerPosition, {0, playerHalfCylinder, 0}),
                 Vector3Subtract(playerPosition, {0, playerHalfCylinder, 0}),
                 characterSettings.radius, 8, 16, groundInfo.state == RJ::GroundState::OnGround ? GREEN : DARKGREEN);
             if (groundInfo.body.IsValid())
                 DrawLine3D(groundInfo.position, Vector3Add(groundInfo.position, groundInfo.normal), PURPLE);
+            if (hitBelowPlayer) {
+                DrawLine3D(playerPosition, footHit.point, GOLD);
+                DrawSphere(footHit.point, 0.06f, GOLD);
+            }
             if (hitBody) {
                 DrawSphere(mouseHit.point, 0.08f, RED);
                 DrawLine3D(mouseHit.point, Vector3Add(mouseHit.point, mouseHit.normal), RED);

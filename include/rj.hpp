@@ -411,6 +411,8 @@ namespace RayJolt{
 		bool Init();
 		void Update(float deltaTime,int collisionStep = 1);
 		void Shutdown();
+		void SetGravity(Vector3 gravity);
+		Vector3 GetGravity() const;
 
 		void OptimizeBroadPhase() {
 			physicsSystem_.OptimizeBroadPhase();

@@ -118,6 +118,25 @@ namespace RayJolt {
         }
     }
 
+    void PhysicsWorld::SetGravity(Vector3 gravity) {
+        if (!std::isfinite(gravity.x) || !std::isfinite(gravity.y) || !std::isfinite(gravity.z))
+            throw std::invalid_argument("Gravity must be finite");
+        const auto value = Detail::ToJoltVec3(gravity);
+        if (physicsSystem_.GetGravity() == value)
+            return;
+        physicsSystem_.SetGravity(value);
+        JPH::BodyIDVector bodyIDs;
+        physicsSystem_.GetBodies(bodyIDs);
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        for (const auto& id : bodyIDs)
+            if (bodies.GetMotionType(id) == JPH::EMotionType::Dynamic)
+                bodies.ActivateBody(id);
+    }
+
+    Vector3 PhysicsWorld::GetGravity() const {
+        return Detail::ToRaylibVector3(physicsSystem_.GetGravity());
+    }
+
     bool PhysicsWorld::ContainsBody(BodyHandle body) const {
         if (!body.IsValid())
             return false;

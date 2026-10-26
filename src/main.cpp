@@ -49,6 +49,7 @@ int main()
     // Destroy all physics objects before unregistering Jolt's types and factory.
     {
         RJ::PhysicsWorld& physics = context.GetWorld();
+        physics.SetGravity({0.0f, -9.81f, 0.0f});
 
         RJ::BoxDesc floorSettings;
         floorSettings.size = {20.0f, 1.0f, 20.0f};
@@ -123,6 +124,10 @@ int main()
             }
             if (IsKeyPressed(KEY_SPACE))
                 physics.AddImpulse(ball, {0.0f, 3000.0f, 0.0f});
+            if (IsKeyPressed(KEY_G)) {
+                const bool gravityEnabled = Vector3LengthSqr(physics.GetGravity()) > 0.0f;
+                physics.SetGravity(gravityEnabled ? Vector3{0.0f, 0.0f, 0.0f} : Vector3{0.0f, -9.81f, 0.0f});
+            }
             if (IsKeyPressed(KEY_P)) {
                 Vector3 position = physics.GetPosition(platform);
                 position.y += platformSettings.size.y * 0.5f + physics.GetCharacterHeight(player) * 0.5f + 0.02f;
@@ -203,6 +208,7 @@ int main()
             DrawText("Arrows: move   J: jump   C: crouch   P: ride platform", 20, 140, 20, DARKGRAY);
             DrawText(TextFormat("Character: %s   Max slope: %.0f degrees",
                 groundText, characterSettings.maxSlopeAngleDegrees), 20, 168, 20, DARKGRAY);
+            DrawText(TextFormat("G: toggle gravity   Y: %.2f m/s^2", physics.GetGravity().y), 20, 196, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

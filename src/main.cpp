@@ -187,7 +187,7 @@ int main()
             RJ::RayHit mouseHit;
             const bool hitBody = physics.CastRay(GetScreenToWorldRay(GetMousePosition(), camera), 100.0f, mouseHit);
             if (hitBody && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-                physics.AddImpulse(mouseHit.body, {0.0f, 3000.0f, 0.0f});
+                physics.AddImpulse(mouseHit.body, {0.0f, 3000.0f, 0.0f}, mouseHit.point);
             const Vector3 playerPosition = physics.GetPosition(player);
             const Ray footRay{playerPosition, {0.0f, -1.0f, 0.0f}};
             RJ::RayHit footHit;
@@ -223,7 +223,7 @@ int main()
             DrawText("rayjolt | raylib + Jolt Physics", 20, 20, 24, DARKGRAY);
             DrawText("R: reset   SPACE: impulse   F: hold force   ESC: exit", 20, 54, 20, DARKGRAY);
             DrawFPS(20, 84);
-            DrawText("Left click: impulse at pointed body", 20, 112, 20, DARKGRAY);
+            DrawText("Left click: impulse at hit point", 20, 112, 20, DARKGRAY);
             DrawText("Arrows: move   J: jump   C: crouch   P: ride platform", 20, 140, 20, DARKGRAY);
             DrawText(TextFormat("Character: %s   Max slope: %.0f degrees",
                 groundText, characterSettings.maxSlopeAngleDegrees), 20, 168, 20, DARKGRAY);

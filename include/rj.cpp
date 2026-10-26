@@ -443,6 +443,26 @@ namespace RayJolt {
         physicsSystem_.GetBodyInterface().AddImpulse(body.GetJoltID(), Detail::ToJoltVec3(impulse));
     }
 
+    void PhysicsWorld::AddForce(BodyHandle body, Vector3 force, Vector3 worldPosition) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        if (!std::isfinite(force.x) || !std::isfinite(force.y) || !std::isfinite(force.z) ||
+            !std::isfinite(worldPosition.x) || !std::isfinite(worldPosition.y) || !std::isfinite(worldPosition.z))
+            throw std::invalid_argument("Force or impulse and world position must be finite");
+        physicsSystem_.GetBodyInterface().AddForce(body.GetJoltID(),
+            Detail::ToJoltVec3(force), Detail::ToJoltRVec3(worldPosition));
+    }
+
+    void PhysicsWorld::AddImpulse(BodyHandle body, Vector3 impulse, Vector3 worldPosition) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        if (!std::isfinite(impulse.x) || !std::isfinite(impulse.y) || !std::isfinite(impulse.z) ||
+            !std::isfinite(worldPosition.x) || !std::isfinite(worldPosition.y) || !std::isfinite(worldPosition.z))
+            throw std::invalid_argument("Force or impulse and world position must be finite");
+        physicsSystem_.GetBodyInterface().AddImpulse(body.GetJoltID(),
+            Detail::ToJoltVec3(impulse), Detail::ToJoltRVec3(worldPosition));
+    }
+
     BodyHandle PhysicsWorld::CreateCharacter(const CharacterDesc& desc) {
         if (!std::isfinite(desc.radius) || desc.radius <= 0.0f ||
             !std::isfinite(desc.height) || desc.height <= 2.0f * desc.radius ||

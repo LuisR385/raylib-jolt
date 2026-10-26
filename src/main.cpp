@@ -135,6 +135,11 @@ int main()
                 physics.SetPosition(player, position);
                 physics.SetLinearVelocity(player, {0.0f, 0.0f, 0.0f});
             }
+            if (IsKeyPressed(KEY_D)) {
+                const float damping = physics.GetLinearDamping(ball) < 1.0f ? 2.0f : 0.0f;
+                physics.SetLinearDamping(ball, damping);
+                physics.SetAngularDamping(ball, damping);
+            }
             if (IsKeyPressed(KEY_J))
                 jumpRequested = true;
             if (IsKeyPressed(KEY_H))
@@ -226,6 +231,8 @@ int main()
             DrawText(TextFormat("H: toggle ball gravity   Factor: %.1f", physics.GetGravityFactor(ball)), 20, 224, 20, DARKGRAY);
             DrawText(TextFormat("B: toggle ball bounce   Restitution: %.1f", physics.GetRestitution(ball)), 20, 252, 20, DARKGRAY);
             DrawText(TextFormat("M: toggle ball mass   Mass: %.1f kg", physics.GetMass(ball)), 20, 280, 20, DARKGRAY);
+            DrawText(TextFormat("D: toggle ball damping   Linear: %.1f   Angular: %.1f",
+                physics.GetLinearDamping(ball), physics.GetAngularDamping(ball)), 20, 308, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

@@ -232,6 +232,58 @@ namespace RayJolt {
         return 1.0f / inverseMass;
     }
 
+    void PhysicsWorld::SetLinearDamping(BodyHandle body, float damping) {
+        if (!std::isfinite(damping) || damping < 0.0f)
+            throw std::invalid_argument("Damping must be finite and non-negative");
+        {
+            JPH::BodyLockWrite lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
+            if (!lock.Succeeded())
+                throw std::invalid_argument("Body does not exist in this world");
+            if (!lock.GetBody().IsDynamic())
+                throw std::invalid_argument("Damping requires a dynamic body");
+            auto* motion = lock.GetBody().GetMotionProperties();
+            if (motion->GetLinearDamping() == damping)
+                return;
+            motion->SetLinearDamping(damping);
+        }
+        physicsSystem_.GetBodyInterface().ActivateBody(body.GetJoltID());
+    }
+
+    float PhysicsWorld::GetLinearDamping(BodyHandle body) const {
+        JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
+        if (!lock.Succeeded())
+            throw std::invalid_argument("Body does not exist in this world");
+        if (!lock.GetBody().IsDynamic())
+            throw std::invalid_argument("Damping requires a dynamic body");
+        return lock.GetBody().GetMotionProperties()->GetLinearDamping();
+    }
+
+    void PhysicsWorld::SetAngularDamping(BodyHandle body, float damping) {
+        if (!std::isfinite(damping) || damping < 0.0f)
+            throw std::invalid_argument("Damping must be finite and non-negative");
+        {
+            JPH::BodyLockWrite lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
+            if (!lock.Succeeded())
+                throw std::invalid_argument("Body does not exist in this world");
+            if (!lock.GetBody().IsDynamic())
+                throw std::invalid_argument("Damping requires a dynamic body");
+            auto* motion = lock.GetBody().GetMotionProperties();
+            if (motion->GetAngularDamping() == damping)
+                return;
+            motion->SetAngularDamping(damping);
+        }
+        physicsSystem_.GetBodyInterface().ActivateBody(body.GetJoltID());
+    }
+
+    float PhysicsWorld::GetAngularDamping(BodyHandle body) const {
+        JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
+        if (!lock.Succeeded())
+            throw std::invalid_argument("Body does not exist in this world");
+        if (!lock.GetBody().IsDynamic())
+            throw std::invalid_argument("Damping requires a dynamic body");
+        return lock.GetBody().GetMotionProperties()->GetAngularDamping();
+    }
+
     bool PhysicsWorld::ContainsBody(BodyHandle body) const {
         if (!body.IsValid())
             return false;

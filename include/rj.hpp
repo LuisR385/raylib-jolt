@@ -421,6 +421,10 @@ namespace RayJolt{
 		float GetRestitution(BodyHandle body) const;
 		void SetMass(BodyHandle body, float mass);
 		float GetMass(BodyHandle body) const;
+		void SetLinearDamping(BodyHandle body, float damping);
+		float GetLinearDamping(BodyHandle body) const;
+		void SetAngularDamping(BodyHandle body, float damping);
+		float GetAngularDamping(BodyHandle body) const;
 
 		void OptimizeBroadPhase() {
 			physicsSystem_.OptimizeBroadPhase();

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
+#include <limits>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/NarrowPhaseQuery.h>
 //NOTE : ONLY ONE JOLT RUNTIME.
@@ -198,6 +199,37 @@ namespace RayJolt {
         if (!ContainsBody(body))
             throw std::invalid_argument("Body does not exist in this world");
         return physicsSystem_.GetBodyInterface().GetRestitution(body.GetJoltID());
+    }
+
+    void PhysicsWorld::SetMass(BodyHandle body, float mass) {
+        if (!std::isfinite(mass) || mass < std::numeric_limits<float>::min())
+            throw std::invalid_argument("Mass must be a positive finite normal float");
+        {
+            JPH::BodyLockWrite lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
+            if (!lock.Succeeded())
+                throw std::invalid_argument("Body does not exist in this world");
+            if (!lock.GetBody().IsDynamic())
+                throw std::invalid_argument("Mass requires a dynamic body");
+            auto* motion = lock.GetBody().GetMotionProperties();
+            if (motion->GetInverseMass() <= 0.0f)
+                throw std::invalid_argument("Body must have finite mass to change mass");
+            motion->ScaleToMass(mass);
+        }
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        bodies.InvalidateContactCache(body.GetJoltID());
+        bodies.ActivateBody(body.GetJoltID());
+    }
+
+    float PhysicsWorld::GetMass(BodyHandle body) const {
+        JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
+        if (!lock.Succeeded())
+            throw std::invalid_argument("Body does not exist in this world");
+        if (!lock.GetBody().IsDynamic())
+            throw std::invalid_argument("Mass requires a dynamic body");
+        const float inverseMass = lock.GetBody().GetMotionProperties()->GetInverseMass();
+        if (inverseMass <= 0.0f)
+            throw std::invalid_argument("Body does not have finite mass");
+        return 1.0f / inverseMass;
     }
 
     bool PhysicsWorld::ContainsBody(BodyHandle body) const {

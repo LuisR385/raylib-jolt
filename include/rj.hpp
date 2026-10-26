@@ -419,6 +419,8 @@ namespace RayJolt{
 		float GetFriction(BodyHandle body) const;
 		void SetRestitution(BodyHandle body, float restitution);
 		float GetRestitution(BodyHandle body) const;
+		void SetMass(BodyHandle body, float mass);
+		float GetMass(BodyHandle body) const;
 
 		void OptimizeBroadPhase() {
 			physicsSystem_.OptimizeBroadPhase();

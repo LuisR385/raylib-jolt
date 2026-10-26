@@ -69,6 +69,7 @@ int main()
         RJ::BodyHandle ball = physics.CreateSphere(ballSettings);
         if (!ball.IsValid())
             return 1;
+        const float initialBallMass = physics.GetMass(ball);
         RJ::CapsuleDesc capsuleSettings;
         capsuleSettings.position = {3.0f, 6.0f, 0.0f};
         RJ::BodyHandle capsule = physics.CreateCapsule(capsuleSettings);
@@ -140,6 +141,8 @@ int main()
                 physics.SetGravityFactor(ball, physics.GetGravityFactor(ball) == 0.0f ? 1.0f : 0.0f);
             if (IsKeyPressed(KEY_B))
                 physics.SetRestitution(ball, physics.GetRestitution(ball) == 0.0f ? 0.8f : 0.0f);
+            if (IsKeyPressed(KEY_M))
+                physics.SetMass(ball, physics.GetMass(ball) < initialBallMass * 2.0f ? initialBallMass * 5.0f : initialBallMass);
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
@@ -222,6 +225,7 @@ int main()
             DrawText(TextFormat("G: toggle gravity   Y: %.2f m/s^2", physics.GetGravity().y), 20, 196, 20, DARKGRAY);
             DrawText(TextFormat("H: toggle ball gravity   Factor: %.1f", physics.GetGravityFactor(ball)), 20, 224, 20, DARKGRAY);
             DrawText(TextFormat("B: toggle ball bounce   Restitution: %.1f", physics.GetRestitution(ball)), 20, 252, 20, DARKGRAY);
+            DrawText(TextFormat("M: toggle ball mass   Mass: %.1f kg", physics.GetMass(ball)), 20, 280, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

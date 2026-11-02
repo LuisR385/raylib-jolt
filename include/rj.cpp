@@ -454,6 +454,13 @@ namespace RayJolt {
         return Detail::ToRaylibRMatrix(physicsSystem_.GetBodyInterface().GetWorldTransform(body.GetJoltID()));
     }
 
+    BoundingBox PhysicsWorld::GetBoundingBox(BodyHandle body) const {
+        JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
+        if (!lock.Succeeded())
+            throw std::invalid_argument("Body does not exist in this world");
+        return Detail::ToRaylibBoundingBox(lock.GetBody().GetWorldSpaceBounds());
+    }
+
     void PhysicsWorld::SetRotation(BodyHandle body, Quaternion value) {
         if (!ContainsBody(body))
             throw std::invalid_argument("Body does not exist in this world");

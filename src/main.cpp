@@ -237,6 +237,7 @@ int main()
                 DrawSphere(footHit.point, 0.06f, GOLD);
             }
             if (hitBody) {
+                DrawBoundingBox(physics.GetBoundingBox(mouseHit.body), RED);
                 DrawSphere(mouseHit.point, 0.08f, RED);
                 DrawLine3D(mouseHit.point, Vector3Add(mouseHit.point, mouseHit.normal), RED);
             }

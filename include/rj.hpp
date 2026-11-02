@@ -455,6 +455,8 @@ namespace RayJolt{
 		void AddForce(BodyHandle body, Vector3 force, Vector3 worldPosition);
 		void AddImpulse(BodyHandle body, Vector3 impulse);
 		void AddImpulse(BodyHandle body, Vector3 impulse, Vector3 worldPosition);
+		void AddTorque(BodyHandle body, Vector3 torque);
+		void AddAngularImpulse(BodyHandle body, Vector3 impulse);
 		bool CastRay(const Ray& ray, float maxDistance, RayHit& hit, BodyHandle ignoreBody = {}) const;
 		bool ContainsBody(BodyHandle body) const;
 		bool DestroyBody(BodyHandle& body);

@@ -148,6 +148,8 @@ int main()
                 physics.SetRestitution(ball, physics.GetRestitution(ball) == 0.0f ? 0.8f : 0.0f);
             if (IsKeyPressed(KEY_M))
                 physics.SetMass(ball, physics.GetMass(ball) < initialBallMass * 2.0f ? initialBallMass * 5.0f : initialBallMass);
+            if (IsKeyPressed(KEY_I))
+                physics.AddAngularImpulse(capsule, {0.0f, 0.0f, 200.0f});
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
@@ -166,6 +168,8 @@ int main()
                 }
                 if (IsKeyDown(KEY_F))
                     physics.AddForce(ball, {0.0f, 6000.0f, 0.0f});
+                if (IsKeyDown(KEY_T))
+                    physics.AddTorque(capsule, {0.0f, 0.0f, 400.0f});
                 context.Step(RJ::timeStep);
                 accumulator -= RJ::timeStep;
             }
@@ -233,6 +237,7 @@ int main()
             DrawText(TextFormat("M: toggle ball mass   Mass: %.1f kg", physics.GetMass(ball)), 20, 280, 20, DARKGRAY);
             DrawText(TextFormat("D: toggle ball damping   Linear: %.1f   Angular: %.1f",
                 physics.GetLinearDamping(ball), physics.GetAngularDamping(ball)), 20, 308, 20, DARKGRAY);
+            DrawText("Capsule: hold T for torque   I for angular impulse", 20, 336, 20, DARKGRAY);
             EndDrawing();
         }
         CloseWindow();

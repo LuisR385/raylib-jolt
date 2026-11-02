@@ -284,6 +284,30 @@ namespace RayJolt {
         return lock.GetBody().GetMotionProperties()->GetAngularDamping();
     }
 
+    void PhysicsWorld::WakeBody(BodyHandle body) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        if (bodies.GetMotionType(body.GetJoltID()) != JPH::EMotionType::Dynamic || !bodies.IsAdded(body.GetJoltID()))
+            throw std::invalid_argument("WakeBody requires a dynamic body added to the world");
+        bodies.ActivateBody(body.GetJoltID());
+    }
+
+    void PhysicsWorld::SleepBody(BodyHandle body) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        if (bodies.GetMotionType(body.GetJoltID()) != JPH::EMotionType::Dynamic || !bodies.IsAdded(body.GetJoltID()))
+            throw std::invalid_argument("SleepBody requires a dynamic body added to the world");
+        bodies.DeactivateBody(body.GetJoltID());
+    }
+
+    bool PhysicsWorld::IsActive(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return physicsSystem_.GetBodyInterface().IsActive(body.GetJoltID());
+    }
+
     bool PhysicsWorld::ContainsBody(BodyHandle body) const {
         if (!body.IsValid())
             return false;

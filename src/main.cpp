@@ -152,6 +152,12 @@ int main()
                 physics.SetMass(ball, physics.GetMass(ball) < initialBallMass * 2.0f ? initialBallMass * 5.0f : initialBallMass);
             if (IsKeyPressed(KEY_I))
                 physics.AddAngularImpulse(capsule, {0.0f, 0.0f, 200.0f});
+            if (IsKeyPressed(KEY_N)) {
+                if (physics.IsActive(ball))
+                    physics.SleepBody(ball);
+                else
+                    physics.WakeBody(ball);
+            }
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
@@ -241,6 +247,8 @@ int main()
             DrawText(TextFormat("D: toggle ball damping   Linear: %.1f   Angular: %.1f",
                 physics.GetLinearDamping(ball), physics.GetAngularDamping(ball)), 20, 308, 20, DARKGRAY);
             DrawText("Capsule: hold T for torque   I for angular impulse", 20, 336, 20, DARKGRAY);
+            DrawText(TextFormat("N: sleep/wake ball   State: %s",
+                physics.IsActive(ball) ? "Active" : "Sleeping"), 20, 364, 20, DARKGRAY);
             EndDrawing();
         }
         UnloadModel(platformModel);

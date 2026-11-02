@@ -446,6 +446,7 @@ namespace RayJolt{
 		void SetPosition(BodyHandle body, Vector3 value);
 		void MoveKinematic(BodyHandle body, Vector3 position, Quaternion rotation, float deltaTime);
 		Quaternion GetRotation(BodyHandle body) const;
+		Matrix GetTransform(BodyHandle body) const;
 		void SetRotation(BodyHandle body, Quaternion value);
 		Vector3 GetLinearVelocity(BodyHandle body) const;
 		void SetLinearVelocity(BodyHandle body, Vector3 value);

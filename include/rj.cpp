@@ -401,6 +401,12 @@ namespace RayJolt {
         return Detail::ToRaylibQuaternion(physicsSystem_.GetBodyInterface().GetRotation(body.GetJoltID()));
     }
 
+    Matrix PhysicsWorld::GetTransform(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return Detail::ToRaylibRMatrix(physicsSystem_.GetBodyInterface().GetWorldTransform(body.GetJoltID()));
+    }
+
     void PhysicsWorld::SetRotation(BodyHandle body, Quaternion value) {
         if (!ContainsBody(body))
             throw std::invalid_argument("Body does not exist in this world");

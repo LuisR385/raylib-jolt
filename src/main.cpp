@@ -92,6 +92,8 @@ int main()
 
         SetConfigFlags(FLAG_MSAA_4X_HINT);
         InitWindow(1280, 720, "rayjolt - raylib + Jolt Hello World");
+        Model platformModel = LoadModelFromMesh(GenMeshCube(
+            platformSettings.size.x, platformSettings.size.y, platformSettings.size.z));
         SetTargetFPS(60);
         Camera3D camera{};
         camera.position = {12.0f, 9.0f, 12.0f};
@@ -203,8 +205,9 @@ int main()
             DrawCube({0.0f, -0.5f, 0.0f}, 20.0f, 1.0f, 20.0f, LIGHTGRAY);
             DrawCubeWires({0.0f, -0.5f, 0.0f}, 20.0f, 1.0f, 20.0f, GRAY);
             DrawGrid(20, 1.0f);
-            DrawCubeV(physics.GetPosition(platform), platformSettings.size, BEIGE);
-            DrawCubeWiresV(physics.GetPosition(platform), platformSettings.size, BROWN);
+            platformModel.transform = physics.GetTransform(platform);
+            DrawModel(platformModel, {0.0f, 0.0f, 0.0f}, 1.0f, BEIGE);
+            DrawModelWires(platformModel, {0.0f, 0.0f, 0.0f}, 1.0f, BROWN);
             DrawSphere(spherePosition, radius, ORANGE);
             DrawSphereWires(spherePosition, radius, 16, 16, MAROON);
             DrawCapsule(capsuleTop, capsuleBottom, capsuleSettings.radius, 8, 16, SKYBLUE);
@@ -240,6 +243,7 @@ int main()
             DrawText("Capsule: hold T for torque   I for angular impulse", 20, 336, 20, DARKGRAY);
             EndDrawing();
         }
+        UnloadModel(platformModel);
         CloseWindow();
         physics.DestroyBody(ball);
         physics.DestroyBody(capsule);

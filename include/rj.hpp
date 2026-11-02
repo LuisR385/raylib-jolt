@@ -428,6 +428,8 @@ namespace RayJolt{
 		void WakeBody(BodyHandle body);
 		void SleepBody(BodyHandle body);
 		bool IsActive(BodyHandle body) const;
+		void SetContinuousCollision(BodyHandle body, bool enabled);
+		bool IsContinuousCollisionEnabled(BodyHandle body) const;
 
 		void OptimizeBroadPhase() {
 			physicsSystem_.OptimizeBroadPhase();

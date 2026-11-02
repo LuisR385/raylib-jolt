@@ -158,6 +158,14 @@ int main()
                 else
                     physics.WakeBody(ball);
             }
+            if (IsKeyPressed(KEY_V))
+                physics.SetContinuousCollision(ball, !physics.IsContinuousCollisionEnabled(ball));
+            if (IsKeyPressed(KEY_L)) {
+                physics.SetPosition(ball, {0.0f, 10.0f, 0.0f});
+                physics.SetLinearDamping(ball, 0.0f);
+                physics.SetLinearVelocity(ball, {0.0f, -400.0f, 0.0f});
+                physics.SetAngularVelocity(ball, {0.0f, 0.0f, 0.0f});
+            }
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
@@ -249,6 +257,8 @@ int main()
             DrawText("Capsule: hold T for torque   I for angular impulse", 20, 336, 20, DARKGRAY);
             DrawText(TextFormat("N: sleep/wake ball   State: %s",
                 physics.IsActive(ball) ? "Active" : "Sleeping"), 20, 364, 20, DARKGRAY);
+            DrawText(TextFormat("V: toggle CCD (%s)   L: fast drop",
+                physics.IsContinuousCollisionEnabled(ball) ? "On" : "Off"), 20, 392, 20, DARKGRAY);
             EndDrawing();
         }
         UnloadModel(platformModel);

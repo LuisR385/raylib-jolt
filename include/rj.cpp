@@ -308,6 +308,29 @@ namespace RayJolt {
         return physicsSystem_.GetBodyInterface().IsActive(body.GetJoltID());
     }
 
+    void PhysicsWorld::SetContinuousCollision(BodyHandle body, bool enabled) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        auto& bodies = physicsSystem_.GetBodyInterface();
+        if (bodies.GetMotionType(body.GetJoltID()) != JPH::EMotionType::Dynamic)
+            throw std::invalid_argument("Continuous collision requires a dynamic body");
+        const auto quality = enabled ? JPH::EMotionQuality::LinearCast : JPH::EMotionQuality::Discrete;
+        if (bodies.GetMotionQuality(body.GetJoltID()) == quality)
+            return;
+        bodies.SetMotionQuality(body.GetJoltID(), quality);
+        if (bodies.IsAdded(body.GetJoltID()))
+            bodies.ActivateBody(body.GetJoltID());
+    }
+
+    bool PhysicsWorld::IsContinuousCollisionEnabled(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        const auto& bodies = physicsSystem_.GetBodyInterface();
+        if (bodies.GetMotionType(body.GetJoltID()) != JPH::EMotionType::Dynamic)
+            throw std::invalid_argument("Continuous collision requires a dynamic body");
+        return bodies.GetMotionQuality(body.GetJoltID()) == JPH::EMotionQuality::LinearCast;
+    }
+
     bool PhysicsWorld::ContainsBody(BodyHandle body) const {
         if (!body.IsValid())
             return false;

@@ -791,18 +791,49 @@ namespace RayJolt {
         return true;
     }
 
-    BodyHandle PhysicsWorld::CreateStaticMesh(const TriangleMeshData& mesh) {
+    BodyHandle PhysicsWorld::CreateStaticMesh(const TriangleMeshData& mesh, const StaticMeshDesc& desc) {
         const auto validation = ValidateTriangleMesh(mesh);
         if (!validation.valid) {
             TraceLog(LOG_WARNING, "Invalid triangle mesh: %s", validation.message.c_str());
             return BodyHandle{};
         }
         
-        //joltとコンテナ(STL)を同じにする
+        if (!std::isfinite(desc.position.x) || !std::isfinite(desc.position.y) || !std::isfinite(desc.position.z) ||
+            !std::isfinite(desc.scale.x) || !std::isfinite(desc.scale.y) || !std::isfinite(desc.scale.z) ||
+            desc.scale.x <= 0.0f || desc.scale.y <= 0.0f || desc.scale.z <= 0.0f ||
+            !std::isfinite(desc.rotation.x) || !std::isfinite(desc.rotation.y) ||
+            !std::isfinite(desc.rotation.z) || !std::isfinite(desc.rotation.w)) {
+            TraceLog(LOG_WARNING, "Invalid mesh transform: values must be finite and scale must be positive");
+            return BodyHandle{};
+        }
+        const double rotationLength = std::sqrt(double(desc.rotation.x) * desc.rotation.x +
+            double(desc.rotation.y) * desc.rotation.y + double(desc.rotation.z) * desc.rotation.z +
+            double(desc.rotation.w) * desc.rotation.w);
+        if (rotationLength == 0.0) {
+            TraceLog(LOG_WARNING, "Invalid mesh transform: rotation cannot be a zero quaternion");
+            return BodyHandle{};
+        }
+        TriangleMeshData scaledMesh = mesh;
+        for (auto& vertex : scaledMesh.vertices) {
+            const double x = double(vertex.x) * desc.scale.x;
+            const double y = double(vertex.y) * desc.scale.y;
+            const double z = double(vertex.z) * desc.scale.z;
+            const double limit = std::numeric_limits<float>::max();
+            if (std::abs(x) > limit || std::abs(y) > limit || std::abs(z) > limit) {
+                TraceLog(LOG_WARNING, "Invalid mesh transform: scaled vertex exceeds float range");
+                return BodyHandle{};
+            }
+            vertex = {float(x), float(y), float(z)};
+        }
+        const auto scaledValidation = ValidateTriangleMesh(scaledMesh);
+        if (!scaledValidation.valid) {
+            TraceLog(LOG_WARNING, "Invalid scaled triangle mesh: %s", scaledValidation.message.c_str());
+            return BodyHandle{};
+        }
 
         JPH::VertexList vertices;
         vertices.reserve(mesh.vertices.size()); 
-        for (const auto& vertex : mesh.vertices)
+        for (const auto& vertex : scaledMesh.vertices)
             vertices.emplace_back(vertex.x, vertex.y, vertex.z);
 
         JPH::IndexedTriangleList triangles;
@@ -816,8 +847,10 @@ namespace RayJolt {
             TraceLog(LOG_WARNING, "Could not create triangle mesh: %s", shape.GetError().c_str());
             return BodyHandle{};
         }
-        JPH::BodyCreationSettings settings(shape.Get().GetPtr(), JPH::RVec3::sZero(),
-            JPH::Quat::sIdentity(), JPH::EMotionType::Static, ObjectLayers::NON_MOVING);
+        const JPH::Quat rotation(float(desc.rotation.x / rotationLength), float(desc.rotation.y / rotationLength),
+            float(desc.rotation.z / rotationLength), float(desc.rotation.w / rotationLength));
+        JPH::BodyCreationSettings settings(shape.Get().GetPtr(), Detail::ToJoltRVec3(desc.position),
+            rotation, JPH::EMotionType::Static, ObjectLayers::NON_MOVING);
         return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings, JPH::EActivation::DontActivate));
     }
 

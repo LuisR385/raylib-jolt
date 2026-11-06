@@ -278,6 +278,12 @@ namespace RayJolt{
 		std::vector<std::uint32_t> indices;
 	};
 
+	struct StaticMeshDesc {
+		Vector3 position = {0.0f, 0.0f, 0.0f};
+		Quaternion rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+		Vector3 scale = {1.0f, 1.0f, 1.0f};
+	};
+
 	struct MeshValidationResult {
 		bool valid = false;
 		std::string message;
@@ -451,7 +457,7 @@ namespace RayJolt{
 
 
 		BodyHandle CreateBox(const BoxDesc& desc = {});
-		BodyHandle CreateStaticMesh(const TriangleMeshData& mesh);
+		BodyHandle CreateStaticMesh(const TriangleMeshData& mesh, const StaticMeshDesc& desc = {});
 		BodyHandle CreateSphere(const SphereDesc& desc = {});
 		BodyHandle CreateCapsule(const CapsuleDesc& desc = {});
 		BodyHandle CreateCharacter(const CharacterDesc& desc = {});

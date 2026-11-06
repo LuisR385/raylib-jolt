@@ -52,9 +52,11 @@ int main()
         physics.SetGravity({0.0f, -9.81f, 0.0f});
 
         RJ::TriangleMeshData floorMesh;
-        floorMesh.vertices = {{-10, 0, -10}, {10, 0, -10}, {10, 0, 10}, {-10, 0, 10}};
+        floorMesh.vertices = {{-1, 0, -1}, {1, 0, -1}, {1, 0, 1}, {-1, 0, 1}};
         floorMesh.indices = {0, 2, 1, 0, 3, 2};
-        RJ::BodyHandle floor = physics.CreateStaticMesh(floorMesh);
+        RJ::StaticMeshDesc floorSettings;
+        floorSettings.scale = {10.0f, 1.0f, 10.0f};
+        RJ::BodyHandle floor = physics.CreateStaticMesh(floorMesh, floorSettings);
         if (!floor.IsValid())
             return 1;
 

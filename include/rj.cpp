@@ -10,6 +10,42 @@ static RayJolt::JoltRuntime g_joltRuntime;
 
 namespace RayJolt {
 
+    MeshValidationResult ValidateTriangleMesh(const TriangleMeshData& mesh) {
+        //triangle size small size guard.
+        if (mesh.vertices.size() < 3)
+            return {false, "At least three vertices are required"};
+        if (mesh.indices.empty() || mesh.indices.size() % 3 != 0)
+            return {false, "Indices must contain complete triangles"};
+
+        for (std::size_t i = 0; i < mesh.vertices.size(); ++i) {
+            const auto& vertex = mesh.vertices[i];
+            if (!std::isfinite(vertex.x) || !std::isfinite(vertex.y) || !std::isfinite(vertex.z))
+                return {false, "Vertex " + std::to_string(i) + " must have finite coordinates"};
+        }
+
+        for (std::size_t i = 0; i < mesh.indices.size(); i += 3) {
+            const auto a = mesh.indices[i];
+            const auto b = mesh.indices[i + 1];
+            const auto c = mesh.indices[i + 2];
+            const auto triangle = std::to_string(i / 3);
+            if (a >= mesh.vertices.size() || b >= mesh.vertices.size() || c >= mesh.vertices.size())
+                return {false, "Triangle " + triangle + " contains an out-of-range vertex index"};
+
+            const auto& p = mesh.vertices[a];
+            const auto& q = mesh.vertices[b];
+            const auto& r = mesh.vertices[c];
+            const double ux = double(q.x) - p.x;
+            const double uy = double(q.y) - p.y;
+            const double uz = double(q.z) - p.z;
+            const double vx = double(r.x) - p.x;
+            const double vy = double(r.y) - p.y;
+            const double vz = double(r.z) - p.z;
+            if (uy * vz - uz * vy == 0.0 && uz * vx - ux * vz == 0.0 && ux * vy - uy * vx == 0.0)
+                return {false, "Triangle " + triangle + " has zero area"};
+        }
+        return {true, {}};
+    }
+
     static JPH::EMotionType ToJoltMotionType(MotionType type) {
         switch (type) {
         case MotionType::Static: return JPH::EMotionType::Static;

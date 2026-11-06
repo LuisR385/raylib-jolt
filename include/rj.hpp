@@ -30,6 +30,7 @@
 #include <memory>
 #include <vector>
 #include <cstdint>
+#include <string>
 
 namespace RayJolt{
 	inline static constexpr int  RAYJOLT_VERSION_MAJOR = 0;
@@ -276,6 +277,13 @@ namespace RayJolt{
 		std::vector<Vector3> vertices;
 		std::vector<std::uint32_t> indices;
 	};
+
+	struct MeshValidationResult {
+		bool valid = false;
+		std::string message;
+	};
+
+	MeshValidationResult ValidateTriangleMesh(const TriangleMeshData& mesh);
 
 	struct BoxDesc {
 	public:

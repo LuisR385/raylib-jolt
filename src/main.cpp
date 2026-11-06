@@ -55,7 +55,7 @@ int main()
         floorMesh.vertices = {{-1, 0, -1}, {1, 0, -1}, {1, 0, 1}, {-1, 0, 1}};
         floorMesh.indices = {0, 2, 1, 0, 3, 2};
         RJ::StaticMeshDesc floorSettings;
-        floorSettings.scale = {10.0f, 1.0f, 10.0f};
+        floorSettings.scale = {-10.0f, 1.0f, 10.0f};
         RJ::BodyHandle floor = physics.CreateStaticMesh(floorMesh, floorSettings);
         if (!floor.IsValid())
             return 1;

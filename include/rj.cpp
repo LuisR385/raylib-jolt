@@ -800,10 +800,10 @@ namespace RayJolt {
         
         if (!std::isfinite(desc.position.x) || !std::isfinite(desc.position.y) || !std::isfinite(desc.position.z) ||
             !std::isfinite(desc.scale.x) || !std::isfinite(desc.scale.y) || !std::isfinite(desc.scale.z) ||
-            desc.scale.x <= 0.0f || desc.scale.y <= 0.0f || desc.scale.z <= 0.0f ||
+            desc.scale.x == 0.0f || desc.scale.y == 0.0f || desc.scale.z == 0.0f ||
             !std::isfinite(desc.rotation.x) || !std::isfinite(desc.rotation.y) ||
             !std::isfinite(desc.rotation.z) || !std::isfinite(desc.rotation.w)) {
-            TraceLog(LOG_WARNING, "Invalid mesh transform: values must be finite and scale must be positive");
+            TraceLog(LOG_WARNING, "Invalid mesh transform: values must be finite and scale must be non-zero");
             return BodyHandle{};
         }
         const double rotationLength = std::sqrt(double(desc.rotation.x) * desc.rotation.x +
@@ -838,8 +838,14 @@ namespace RayJolt {
 
         JPH::IndexedTriangleList triangles;
         triangles.reserve(mesh.indices.size() / 3);
-        for (std::size_t i = 0; i < mesh.indices.size(); i += 3)
-            triangles.emplace_back(mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2], 0);
+        const bool mirrored = (desc.scale.x < 0.0f) ^ (desc.scale.y < 0.0f) ^ (desc.scale.z < 0.0f);
+        const bool reverseWinding = mirrored != desc.flipWinding;
+        for (std::size_t i = 0; i < mesh.indices.size(); i += 3) {
+            if (reverseWinding)
+                triangles.emplace_back(mesh.indices[i], mesh.indices[i + 2], mesh.indices[i + 1], 0);
+            else
+                triangles.emplace_back(mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2], 0);
+        }
 
         JPH::MeshShapeSettings shapeSettings(std::move(vertices), std::move(triangles));
         const auto shape = shapeSettings.Create();

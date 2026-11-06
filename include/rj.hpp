@@ -29,6 +29,7 @@
 #include <thread>
 #include <memory>
 #include <vector>
+#include <cstdint>
 
 namespace RayJolt{
 	inline static constexpr int  RAYJOLT_VERSION_MAJOR = 0;
@@ -269,6 +270,11 @@ namespace RayJolt{
 		Static,
 		Dynamic,
 		Kinematic
+	};
+
+	struct TriangleMeshData {
+		std::vector<Vector3> vertices;
+		std::vector<std::uint32_t> indices;
 	};
 
 	struct BoxDesc {

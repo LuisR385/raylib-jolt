@@ -451,6 +451,7 @@ namespace RayJolt{
 
 
 		BodyHandle CreateBox(const BoxDesc& desc = {});
+		BodyHandle CreateStaticMesh(const TriangleMeshData& mesh);
 		BodyHandle CreateSphere(const SphereDesc& desc = {});
 		BodyHandle CreateCapsule(const CapsuleDesc& desc = {});
 		BodyHandle CreateCharacter(const CharacterDesc& desc = {});

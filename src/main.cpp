@@ -51,12 +51,10 @@ int main()
         RJ::PhysicsWorld& physics = context.GetWorld();
         physics.SetGravity({0.0f, -9.81f, 0.0f});
 
-        RJ::BoxDesc floorSettings;
-        floorSettings.size = {20.0f, 1.0f, 20.0f};
-        floorSettings.position = {0.0f, -0.5f, 0.0f};
-        floorSettings.motionType = RJ::MotionType::Static;
-        floorSettings.restitution = 0.0f;
-        RJ::BodyHandle floor = physics.CreateBox(floorSettings);
+        RJ::TriangleMeshData floorMesh;
+        floorMesh.vertices = {{-10, 0, -10}, {10, 0, -10}, {10, 0, 10}, {-10, 0, 10}};
+        floorMesh.indices = {0, 2, 1, 0, 3, 2};
+        RJ::BodyHandle floor = physics.CreateStaticMesh(floorMesh);
         if (!floor.IsValid())
             return 1;
 
@@ -216,8 +214,7 @@ int main()
             BeginDrawing();
             ClearBackground(RAYWHITE);
             BeginMode3D(camera);
-            DrawCube({0.0f, -0.5f, 0.0f}, 20.0f, 1.0f, 20.0f, LIGHTGRAY);
-            DrawCubeWires({0.0f, -0.5f, 0.0f}, 20.0f, 1.0f, 20.0f, GRAY);
+            DrawPlane({0.0f, 0.0f, 0.0f}, {20.0f, 20.0f}, LIGHTGRAY);
             DrawGrid(20, 1.0f);
             platformModel.transform = physics.GetTransform(platform);
             DrawModel(platformModel, {0.0f, 0.0f, 0.0f}, 1.0f, BEIGE);

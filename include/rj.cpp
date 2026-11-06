@@ -5,6 +5,7 @@
 #include <limits>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/NarrowPhaseQuery.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
 //NOTE : ONLY ONE JOLT RUNTIME.
 static RayJolt::JoltRuntime g_joltRuntime;
 
@@ -788,6 +789,36 @@ namespace RayJolt {
             lock.GetBody().GetWorldSpaceSurfaceNormal(result.mSubShapeID2, point));
         hit.distance = result.mFraction * maxDistance;
         return true;
+    }
+
+    BodyHandle PhysicsWorld::CreateStaticMesh(const TriangleMeshData& mesh) {
+        const auto validation = ValidateTriangleMesh(mesh);
+        if (!validation.valid) {
+            TraceLog(LOG_WARNING, "Invalid triangle mesh: %s", validation.message.c_str());
+            return BodyHandle{};
+        }
+        
+        //joltとコンテナ(STL)を同じにする
+
+        JPH::VertexList vertices;
+        vertices.reserve(mesh.vertices.size()); 
+        for (const auto& vertex : mesh.vertices)
+            vertices.emplace_back(vertex.x, vertex.y, vertex.z);
+
+        JPH::IndexedTriangleList triangles;
+        triangles.reserve(mesh.indices.size() / 3);
+        for (std::size_t i = 0; i < mesh.indices.size(); i += 3)
+            triangles.emplace_back(mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2], 0);
+
+        JPH::MeshShapeSettings shapeSettings(std::move(vertices), std::move(triangles));
+        const auto shape = shapeSettings.Create();
+        if (shape.HasError()) {
+            TraceLog(LOG_WARNING, "Could not create triangle mesh: %s", shape.GetError().c_str());
+            return BodyHandle{};
+        }
+        JPH::BodyCreationSettings settings(shape.Get().GetPtr(), JPH::RVec3::sZero(),
+            JPH::Quat::sIdentity(), JPH::EMotionType::Static, ObjectLayers::NON_MOVING);
+        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings, JPH::EActivation::DontActivate));
     }
 
     BodyHandle PhysicsWorld::CreateBox(const BoxDesc& desc) {

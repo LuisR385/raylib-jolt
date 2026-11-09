@@ -900,13 +900,18 @@ namespace RayJolt {
         if (!runtime_.Init())
             return false;
 
-        auto world = std::make_unique<PhysicsWorld>();
-        if (!world->Init()) {
-            world.reset();
+        try {
+            auto world = std::make_unique<PhysicsWorld>();
+            if (!world->Init()) {
+                world.reset();
+                runtime_.End();
+                return false;
+            }
+            world_ = std::move(world);
+        } catch (...) {
             runtime_.End();
-            return false;
+            throw;
         }
-        world_ = std::move(world);
         return true;
     }
 

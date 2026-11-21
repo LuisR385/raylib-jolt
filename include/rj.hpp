@@ -15,6 +15,7 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Character/Character.h>
 #include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayerInterfaceTable.h>
 #include <Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h>
@@ -31,6 +32,7 @@
 #include <vector>
 #include <cstdint>
 #include <string>
+#include <mutex>
 
 #ifdef RJ_WITH_RFBX
 struct RfbxModel;
@@ -384,6 +386,23 @@ namespace RayJolt{
 	};
 
 
+	enum class ContactEventType {
+		Begin,
+		Stay,
+		End
+	};
+
+	struct ContactEvent {
+		ContactEventType type = ContactEventType::Begin;
+		BodyHandle bodyA;
+		BodyHandle bodyB;
+		std::uint32_t subShapeA = 0;
+		std::uint32_t subShapeB = 0;
+		Vector3 point = {};
+		Vector3 normal = {};
+		bool hasContactPoint = false;
+	};
+
 	enum class GroundState {
 		OnGround,
 		OnSteepGround,
@@ -449,6 +468,7 @@ namespace RayJolt{
 		bool Init();
 		void Update(float deltaTime,int collisionStep = 1);
 		void Shutdown();
+		std::vector<ContactEvent> GetContactEvents() const;
 		void SetGravity(Vector3 gravity);
 		Vector3 GetGravity() const;
 		void SetGravityFactor(BodyHandle body, float factor);
@@ -545,6 +565,22 @@ namespace RayJolt{
 		};
 		std::vector<CharacterState> characters_;
 		std::vector<JPH::BodyID> jumpingCharacters_;
+		class ContactEventListener final : public JPH::ContactListener {
+		public:
+			void OnContactAdded(const JPH::Body& a, const JPH::Body& b,
+				const JPH::ContactManifold& manifold, JPH::ContactSettings&) override;
+			void OnContactPersisted(const JPH::Body& a, const JPH::Body& b,
+				const JPH::ContactManifold& manifold, JPH::ContactSettings&) override;
+			void OnContactRemoved(const JPH::SubShapeIDPair& pair) override;
+			void Clear();
+			std::vector<ContactEvent> GetEvents() const;
+		private:
+			void Record(ContactEventType type, const JPH::Body& a, const JPH::Body& b,
+				const JPH::ContactManifold& manifold);
+			mutable std::mutex mutex_;
+			std::vector<ContactEvent> events_;
+		};
+		ContactEventListener contactListener_;
 		JPH::ObjectLayerPairFilterTable layerPairs_{2};
 		JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers_{2, 2};
 		std::unique_ptr<JPH::ObjectVsBroadPhaseLayerFilterTable> broadPhaseFilter_;

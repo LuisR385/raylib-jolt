@@ -174,7 +174,60 @@ namespace RayJolt {
     
     }
 
+    void PhysicsWorld::ContactEventListener::Record(ContactEventType type, const JPH::Body& a,
+        const JPH::Body& b, const JPH::ContactManifold& manifold) {
+        ContactEvent event;
+        event.type = type;
+        event.bodyA = BodyHandle(a.GetID());
+        event.bodyB = BodyHandle(b.GetID());
+        event.subShapeA = manifold.mSubShapeID1.GetValue();
+        event.subShapeB = manifold.mSubShapeID2.GetValue();
+        event.normal = Detail::ToRaylibVector3(manifold.mWorldSpaceNormal);
+        if (!manifold.mRelativeContactPointsOn1.empty()) {
+            event.point = Detail::ToRaylibRVector3(manifold.GetWorldSpaceContactPointOn1(0));
+            event.hasContactPoint = true;
+        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        events_.push_back(event);
+    }
+
+    void PhysicsWorld::ContactEventListener::OnContactAdded(const JPH::Body& a, const JPH::Body& b,
+        const JPH::ContactManifold& manifold, JPH::ContactSettings&) {
+        Record(ContactEventType::Begin, a, b, manifold);
+    }
+
+    void PhysicsWorld::ContactEventListener::OnContactPersisted(const JPH::Body& a, const JPH::Body& b,
+        const JPH::ContactManifold& manifold, JPH::ContactSettings&) {
+        Record(ContactEventType::Stay, a, b, manifold);
+    }
+
+    void PhysicsWorld::ContactEventListener::OnContactRemoved(const JPH::SubShapeIDPair& pair) {
+        ContactEvent event;
+        event.type = ContactEventType::End;
+        event.bodyA = BodyHandle(pair.GetBody1ID());
+        event.bodyB = BodyHandle(pair.GetBody2ID());
+        event.subShapeA = pair.GetSubShapeID1().GetValue();
+        event.subShapeB = pair.GetSubShapeID2().GetValue();
+        std::lock_guard<std::mutex> lock(mutex_);
+        events_.push_back(event);
+    }
+
+    void PhysicsWorld::ContactEventListener::Clear() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        events_.clear();
+    }
+
+    std::vector<ContactEvent> PhysicsWorld::ContactEventListener::GetEvents() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return events_;
+    }
+
+    std::vector<ContactEvent> PhysicsWorld::GetContactEvents() const {
+        return contactListener_.GetEvents();
+    }
+
     PhysicsWorld::~PhysicsWorld() {
+        physicsSystem_.SetContactListener(nullptr);
         Shutdown();
     }
 
@@ -188,6 +241,7 @@ namespace RayJolt {
             broadPhaseLayers_, 2, layerPairs_, 2);
 
         physicsSystem_.Init(1024, 0, 1024, 1024, broadPhaseLayers_, *broadPhaseFilter_, layerPairs_);
+        physicsSystem_.SetContactListener(&contactListener_);
 
         return true;
     }
@@ -209,6 +263,7 @@ namespace RayJolt {
                 bodies.RemoveBody(id);
             bodies.DestroyBody(id);
         }
+        contactListener_.Clear();
     }
 
     void PhysicsWorld::SetGravity(Vector3 gravity) {
@@ -1026,6 +1081,7 @@ namespace RayJolt {
     JPH::EPhysicsUpdateError RayJoltContext::Step(float deltaTime, int collisionSteps) {
         if (!world_)
             throw std::logic_error("RayJoltContext::Init() must succeed before Step()");
+        world_->contactListener_.Clear();
         const auto result = runtime_.Update(world_->GetPhysicsSystem(), deltaTime, collisionSteps);
         world_->UpdateCharacterContacts();
         return result;
@@ -1061,6 +1117,7 @@ namespace RayJolt {
     }
 
     JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld& physics, float timeStep, int collisionSteps) {
+        physics.contactListener_.Clear();
         const auto result = g_joltRuntime.Update(physics.GetPhysicsSystem(), timeStep, collisionSteps);
         physics.UpdateCharacterContacts();
         return result;

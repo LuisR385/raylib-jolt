@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
+#include <cmath>
 
 
 static void JoltTrace(const char *format, ...)
@@ -107,8 +108,88 @@ int main(int argc, char** argv)
         RJ::BodyHandle platform = physics.CreateBox(platformSettings);
         if (!platform.IsValid())
             return 1;
+
+        std::vector<RJ::BoxDesc> obstacles;
+        for (int step = 0; step < 4; ++step) {
+            RJ::BoxDesc desc;
+            const float height = 0.2f * (step + 1);
+            desc.position = {6.0f, height * 0.5f, 2.0f + step * 1.2f};
+            desc.size = {2.0f, height, 1.2f};
+            desc.motionType = RJ::MotionType::Static;
+            obstacles.push_back(desc);
+        }
+        RJ::BoxDesc ceiling;
+        ceiling.position = {-3.0f, 1.45f, 5.0f};
+        ceiling.size = {3.0f, 0.2f, 4.0f};
+        ceiling.motionType = RJ::MotionType::Static;
+        obstacles.push_back(ceiling);
+        for (const auto& desc : obstacles)
+            if (!physics.CreateBox(desc).IsValid())
+                return 1;
+
+        const auto resetPlayer = [&](Vector3 position) {
+            physics.SetPosition(player, {0.0f, 20.0f, 0.0f});
+            physics.SetCrouching(player, false);
+            physics.SetPosition(player, position);
+            physics.SetRotation(player, QuaternionIdentity());
+            physics.SetLinearVelocity(player, {0.0f, 0.0f, 0.0f});
+            physics.SetAngularVelocity(player, {0.0f, 0.0f, 0.0f});
+        };
+        if (argc > 1 && TextIsEqual(argv[1], "--smoke-test")) {
+            const auto check = [](bool condition, const char* message) {
+                if (!condition)
+                    TraceLog(LOG_ERROR, "Stage check failed: %s", message);
+                return condition;
+            };
+            for (int step = 0; step < 240; ++step)
+                if (!check(context.Step(RJ::timeStep) == JPH::EPhysicsUpdateError::None, "physics update"))
+                    return 1;
+            if (!check(physics.IsGrounded(player), "flat ground"))
+                return 1;
+            physics.SetCrouching(player, true);
+            physics.SetPosition(player, {-3.0f, 0.62f, 5.0f});
+            physics.SetLinearVelocity(player, {});
+            for (int step = 0; step < 60; ++step)
+                context.Step(RJ::timeStep);
+            if (!check(physics.IsGrounded(player), "crouching ground") ||
+                !check(!physics.SetCrouching(player, false), "ceiling blocks standing"))
+                return 1;
+            resetPlayer(characterSettings.position);
+            for (int step = 0; step < 240; ++step)
+                context.Step(RJ::timeStep);
+            if (!check(!physics.IsCrouching(player) && physics.IsGrounded(player), "player reset"))
+                return 1;
+            RJ::RayHit hit;
+            for (int step = 0; step < 4; ++step) {
+                const float z = 2.0f + step * 1.2f;
+                if (!check(physics.CastRay({{6, 3, z}, {0, -1, 0}}, 4, hit) &&
+                    std::abs(hit.point.y - 0.2f * (step + 1)) < 0.01f, "stair height"))
+                    return 1;
+            }
+            const Vector3 rampNormal = Vector3RotateByQuaternion({0, 1, 0}, rampSettings.rotation);
+            if (!check(physics.CastRay({Vector3Add(rampSettings.position, Vector3Scale(rampNormal, 2)),
+                Vector3Negate(rampNormal)}, 4, hit) && hit.body.GetJoltID() == ramp.GetJoltID(), "ramp ray") ||
+                !check(physics.CastRay({{4, 1, -1}, {0, 0, -1}}, 4, hit) &&
+                    hit.body.GetJoltID() == wall.GetJoltID(), "wall ray"))
+                return 1;
+            resetPlayer({platformSettings.position.x, platformSettings.position.y + 1.12f, platformSettings.position.z});
+            for (int step = 0; step < 60; ++step)
+                context.Step(RJ::timeStep);
+            for (int step = 0; step < 120; ++step) {
+                Vector3 target = platformSettings.position;
+                target.x += sinf((step + 1) * RJ::timeStep) * 3.0f;
+                physics.MoveKinematic(platform, target, QuaternionIdentity(), RJ::timeStep);
+                physics.MoveCharacter(player, {});
+                context.Step(RJ::timeStep);
+            }
+            if (!check(physics.GetCharacterGroundInfo(player).body.GetJoltID() == platform.GetJoltID() &&
+                std::abs(physics.GetPosition(player).x - physics.GetPosition(platform).x) < 0.15f, "platform follow"))
+                return 1;
+            TraceLog(LOG_INFO, "Stage smoke test passed");
+            return 0;
+        }
         SetConfigFlags(FLAG_MSAA_4X_HINT);
-        InitWindow(1280, 720, "rayjolt - raylib + Jolt Hello World");
+        InitWindow(1280, 720, "rayjolt - physics test stage");
 #ifdef RJ_WITH_RFBX
         RfbxModel importedModel{};
         RJ::BodyHandle importedBody;
@@ -157,8 +238,8 @@ int main(int argc, char** argv)
         };
         SetTargetFPS(60);
         Camera3D camera{};
-        camera.position = {12.0f, 9.0f, 12.0f};
-        camera.target = {0.0f, 2.0f, 0.0f};
+        camera.position = {14.0f, 14.0f, 14.0f};
+        camera.target = {0.0f, 0.5f, 0.0f};
         camera.up = {0.0f, 1.0f, 0.0f};
         camera.fovy = 45.0f;
         camera.projection = CAMERA_PERSPECTIVE;
@@ -166,8 +247,30 @@ int main(int argc, char** argv)
         float accumulator = 0.0f;
         float platformTime = 0.0f;
         bool jumpRequested = false;
+        bool showDebugControls = false;
+        bool followCamera = false;
+        int contactBegins = 0;
+        int contactStays = 0;
+        int contactEnds = 0;
+        const char* currentArea = "Flat ground";
         while (!WindowShouldClose())
         {
+            if (IsKeyPressed(KEY_F1))
+                showDebugControls = !showDebugControls;
+            if (IsKeyPressed(KEY_TAB))
+                followCamera = !followCamera;
+            const Vector3 checkpoints[] = {
+                characterSettings.position, {-6.0f, 1.0f, 4.2f}, {6.0f, 1.0f, 0.5f},
+                {-3.0f, 1.0f, 2.2f}, {4.0f, 1.0f, -1.0f}};
+            const char* areaNames[] = {"Flat ground", "25 degree ramp", "Stairs (step assist not implemented)",
+                "Low ceiling (hold C)", "Wall"};
+            for (int i = 0; i < 5; ++i) {
+                if (IsKeyPressed(KEY_ONE + i)) {
+                    resetPlayer(checkpoints[i]);
+                    currentArea = areaNames[i];
+                    jumpRequested = false;
+                }
+            }
             if (IsKeyPressed(KEY_R))
             {
                 physics.SetPosition(ball, startPosition);
@@ -178,13 +281,29 @@ int main(int argc, char** argv)
                 physics.SetRotation(capsule, capsuleSettings.rotation);
                 physics.SetLinearVelocity(capsule, {0.0f, 0.0f, 0.0f});
                 physics.SetAngularVelocity(capsule, {0.0f, 0.0f, 0.0f});
-                physics.SetPosition(player, characterSettings.position);
-                physics.SetLinearVelocity(player, {0.0f, 0.0f, 0.0f});
+                resetPlayer(characterSettings.position);
+                currentArea = "Flat ground";
+                physics.SetGravity({0.0f, -9.81f, 0.0f});
+                physics.SetGravityFactor(ball, 1.0f);
+                physics.SetRestitution(ball, ballSettings.restitution);
+                physics.SetFriction(ball, ballSettings.friction);
+                physics.SetMass(ball, initialBallMass);
+                physics.SetLinearDamping(ball, 0.05f);
+                physics.SetAngularDamping(ball, 0.05f);
+                physics.SetContinuousCollision(ball, false);
                 accumulator = 0.0f;
                 jumpRequested = false;
                 platformTime = 0.0f;
                 physics.SetPosition(platform, platformSettings.position);
                 physics.SetLinearVelocity(platform, {0.0f, 0.0f, 0.0f});
+#ifdef RJ_WITH_RFBX
+                if (importedDynamic && importedBody.IsValid()) {
+                    physics.SetPosition(importedBody, {0.0f, 3.0f, 5.0f});
+                    physics.SetRotation(importedBody, QuaternionIdentity());
+                    physics.SetLinearVelocity(importedBody, {});
+                    physics.SetAngularVelocity(importedBody, {});
+                }
+#endif
             }
             if (IsKeyPressed(KEY_SPACE))
                 physics.AddImpulse(ball, {0.0f, 3000.0f, 0.0f});
@@ -192,11 +311,12 @@ int main(int argc, char** argv)
                 const bool gravityEnabled = Vector3LengthSqr(physics.GetGravity()) > 0.0f;
                 physics.SetGravity(gravityEnabled ? Vector3{0.0f, 0.0f, 0.0f} : Vector3{0.0f, -9.81f, 0.0f});
             }
-            if (IsKeyPressed(KEY_P)) {
+            if (IsKeyPressed(KEY_P) || IsKeyPressed(KEY_SIX)) {
                 Vector3 position = physics.GetPosition(platform);
-                position.y += platformSettings.size.y * 0.5f + physics.GetCharacterHeight(player) * 0.5f + 0.02f;
-                physics.SetPosition(player, position);
-                physics.SetLinearVelocity(player, {0.0f, 0.0f, 0.0f});
+                position.y += platformSettings.size.y * 0.5f + characterSettings.height * 0.5f + 0.02f;
+                resetPlayer(position);
+                currentArea = "Moving platform";
+                jumpRequested = false;
             }
             if (IsKeyPressed(KEY_D)) {
                 const float damping = physics.GetLinearDamping(ball) < 1.0f ? 2.0f : 0.0f;
@@ -227,6 +347,11 @@ int main(int argc, char** argv)
                 physics.SetLinearVelocity(ball, {0.0f, -400.0f, 0.0f});
                 physics.SetAngularVelocity(ball, {0.0f, 0.0f, 0.0f});
             }
+            if (physics.GetPosition(player).y < -10.0f) {
+                resetPlayer(characterSettings.position);
+                currentArea = "Flat ground (recovered from fall)";
+                jumpRequested = false;
+            }
             accumulator += std::min(GetFrameTime(), 0.25f);
             while (accumulator >= RJ::timeStep)
             {
@@ -248,6 +373,14 @@ int main(int argc, char** argv)
                 if (IsKeyDown(KEY_T))
                     physics.AddTorque(capsule, {0.0f, 0.0f, 400.0f});
                 context.Step(RJ::timeStep);
+                contactBegins = contactStays = contactEnds = 0;
+                for (const auto& event : physics.GetContactEvents()) {
+                    switch (event.type) {
+                    case RJ::ContactEventType::Begin: ++contactBegins; break;
+                    case RJ::ContactEventType::Stay: ++contactStays; break;
+                    case RJ::ContactEventType::End: ++contactEnds; break;
+                    }
+                }
                 accumulator -= RJ::timeStep;
             }
             const Vector3 spherePosition = physics.GetPosition(ball);
@@ -265,11 +398,13 @@ int main(int argc, char** argv)
             case RJ::GroundState::NotSupported: groundText = "Touching, not supported"; break;
             case RJ::GroundState::InAir: break;
             }
+            const Vector3 playerPosition = physics.GetPosition(player);
+            camera.target = followCamera ? playerPosition : Vector3{0.0f, 0.5f, 0.0f};
+            camera.position = followCamera ? Vector3Add(playerPosition, {6.0f, 4.0f, 6.0f}) : Vector3{14.0f, 14.0f, 14.0f};
             RJ::RayHit mouseHit;
             const bool hitBody = physics.CastRay(GetScreenToWorldRay(GetMousePosition(), camera), 100.0f, mouseHit);
             if (hitBody && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
                 physics.AddImpulse(mouseHit.body, {0.0f, 3000.0f, 0.0f}, mouseHit.point);
-            const Vector3 playerPosition = physics.GetPosition(player);
             const Ray footRay{playerPosition, {0.0f, -1.0f, 0.0f}};
             RJ::RayHit footHit;
             const bool hitBelowPlayer = physics.CastRay(footRay, 5.0f, footHit, player);
@@ -281,6 +416,12 @@ int main(int argc, char** argv)
             drawSurface(ramp, rampSettings, ORANGE);
             drawSurface(wall, wallSettings, GRAY);
             DrawGrid(20, 1.0f);
+            for (std::size_t i = 0; i < obstacles.size(); ++i) {
+                const auto& obstacle = obstacles[i];
+                if (i < 4)
+                    DrawCubeV(obstacle.position, obstacle.size, i % 2 == 0 ? SKYBLUE : BLUE);
+                DrawCubeWiresV(obstacle.position, obstacle.size, i < 4 ? DARKBLUE : PURPLE);
+            }
 #ifdef RJ_WITH_RFBX
             if (importedModel.valid)
                 RfbxDrawModelMatrix(&importedModel,
@@ -309,24 +450,35 @@ int main(int argc, char** argv)
                 DrawLine3D(mouseHit.point, Vector3Add(mouseHit.point, mouseHit.normal), RED);
             }
             EndMode3D();
-            DrawText("rayjolt | raylib + Jolt Physics", 20, 20, 24, DARKGRAY);
-            DrawText("R: reset   SPACE: impulse   F: hold force   ESC: exit", 20, 54, 20, DARKGRAY);
-            DrawFPS(20, 84);
-            DrawText("Left click: impulse at hit point", 20, 112, 20, DARKGRAY);
-            DrawText("Arrows: move   J: jump   C: crouch   P: ride platform", 20, 140, 20, DARKGRAY);
-            DrawText(TextFormat("Character: %s   Max slope: %.0f degrees",
-                groundText, characterSettings.maxSlopeAngleDegrees), 20, 168, 20, DARKGRAY);
-            DrawText(TextFormat("G: toggle gravity   Y: %.2f m/s^2", physics.GetGravity().y), 20, 196, 20, DARKGRAY);
-            DrawText(TextFormat("H: toggle ball gravity   Factor: %.1f", physics.GetGravityFactor(ball)), 20, 224, 20, DARKGRAY);
-            DrawText(TextFormat("B: toggle ball bounce   Restitution: %.1f", physics.GetRestitution(ball)), 20, 252, 20, DARKGRAY);
-            DrawText(TextFormat("M: toggle ball mass   Mass: %.1f kg", physics.GetMass(ball)), 20, 280, 20, DARKGRAY);
-            DrawText(TextFormat("D: toggle ball damping   Linear: %.1f   Angular: %.1f",
-                physics.GetLinearDamping(ball), physics.GetAngularDamping(ball)), 20, 308, 20, DARKGRAY);
-            DrawText("Capsule: hold T for torque   I for angular impulse", 20, 336, 20, DARKGRAY);
-            DrawText(TextFormat("N: sleep/wake ball   State: %s",
-                physics.IsActive(ball) ? "Active" : "Sleeping"), 20, 364, 20, DARKGRAY);
-            DrawText(TextFormat("V: toggle CCD (%s)   L: fast drop",
-                physics.IsContinuousCollisionEnabled(ball) ? "On" : "Off"), 20, 392, 20, DARKGRAY);
+            DrawRectangle(12, 12, 750, 196, Fade(RAYWHITE, 0.9f));
+            DrawText("rayjolt | physics test stage", 20, 20, 24, DARKGRAY);
+            DrawText("Arrows: move   J: jump   Hold C: crouch   Tab: camera", 20, 54, 20, DARKGRAY);
+            DrawText("1: flat   2: ramp   3: stairs   4: low ceiling   5: wall   6: platform", 20, 82, 18, DARKGRAY);
+            DrawText(TextFormat("Area: %s | %s", currentArea, groundText), 20, 108, 18, DARKGRAY);
+            DrawText(TextFormat("Position: %.2f, %.2f, %.2f | %s", playerPosition.x, playerPosition.y, playerPosition.z,
+                physics.IsCrouching(player) ? "Crouching" : "Standing"), 20, 132, 18, DARKGRAY);
+            DrawText("R: full reset   F1: physics controls   Esc: exit", 20, 156, 18, DARKGRAY);
+            DrawText(TextFormat("Contacts / step: Begin %d   Stay %d   End %d",
+                contactBegins, contactStays, contactEnds), 20, 180, 18, DARKGRAY);
+            DrawFPS(GetScreenWidth() - 100, 20);
+            if (showDebugControls) {
+                DrawRectangle(12, 214, 750, 300, Fade(RAYWHITE, 0.9f));
+                DrawText("SPACE: ball impulse   Hold F: ball force", 20, 226, 18, DARKGRAY);
+                DrawText("Left click: impulse at hit point", 20, 250, 18, DARKGRAY);
+                DrawText(TextFormat("Character: %s   Max slope: %.0f degrees",
+                    groundText, characterSettings.maxSlopeAngleDegrees), 20, 274, 18, DARKGRAY);
+                DrawText(TextFormat("G: toggle gravity   Y: %.2f m/s^2", physics.GetGravity().y), 20, 298, 18, DARKGRAY);
+                DrawText(TextFormat("H: toggle ball gravity   Factor: %.1f", physics.GetGravityFactor(ball)), 20, 322, 18, DARKGRAY);
+                DrawText(TextFormat("B: toggle ball bounce   Restitution: %.1f", physics.GetRestitution(ball)), 20, 346, 18, DARKGRAY);
+                DrawText(TextFormat("M: toggle ball mass   Mass: %.1f kg", physics.GetMass(ball)), 20, 370, 18, DARKGRAY);
+                DrawText(TextFormat("D: toggle ball damping   Linear: %.1f   Angular: %.1f",
+                    physics.GetLinearDamping(ball), physics.GetAngularDamping(ball)), 20, 394, 18, DARKGRAY);
+                DrawText("Capsule: hold T for torque   I for angular impulse", 20, 418, 18, DARKGRAY);
+                DrawText(TextFormat("N: sleep/wake ball   State: %s",
+                    physics.IsActive(ball) ? "Active" : "Sleeping"), 20, 442, 18, DARKGRAY);
+                DrawText(TextFormat("V: toggle CCD (%s)   L: fast drop",
+                    physics.IsContinuousCollisionEnabled(ball) ? "On" : "Off"), 20, 466, 18, DARKGRAY);
+            }
             EndDrawing();
         }
         UnloadModel(surfaceModel);

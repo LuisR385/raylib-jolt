@@ -151,6 +151,39 @@ int main(int argc, char** argv)
         if (!compound.IsValid())
             return 1;
 
+        std::vector<RJ::RagdollPartDesc> ragdollParts(6);
+        ragdollParts[0].shape.size = {0.5f, 0.7f, 0.3f};
+        ragdollParts[0].shape.localPosition = {0, 0.9f, 0};
+        ragdollParts[0].mass = 8;
+        ragdollParts[1].shape.type = RJ::CompoundPartType::Sphere;
+        ragdollParts[1].shape.radius = 0.2f;
+        ragdollParts[1].shape.localPosition = {0, 1.45f, 0};
+        ragdollParts[1].parent = 0;
+        ragdollParts[1].jointPosition = {0, 1.25f, 0};
+        ragdollParts[1].jointRotation = QuaternionFromAxisAngle({0, 0, 1}, PI * 0.5f);
+        for (int i = 2; i < 6; ++i) {
+            auto& part = ragdollParts[i];
+            const float side = i % 2 == 0 ? -1.0f : 1.0f;
+            part.parent = 0;
+            part.shape.type = RJ::CompoundPartType::Capsule;
+            part.shape.radius = i < 4 ? 0.12f : 0.13f;
+            part.shape.height = i < 4 ? 0.6f : 0.7f;
+            part.shape.localPosition = i < 4 ? Vector3{side * 0.55f, 1.0f, 0} : Vector3{side * 0.16f, 0.25f, 0};
+            part.jointPosition = i < 4 ? Vector3{side * 0.25f, 1.1f, 0} : Vector3{side * 0.16f, 0.55f, 0};
+            if (i < 4)
+                part.shape.localRotation = QuaternionFromAxisAngle({0, 0, 1}, PI * 0.5f);
+            else
+                part.jointRotation = QuaternionFromAxisAngle({0, 0, 1}, PI * 0.5f);
+            part.mass = i < 4 ? 1.5f : 3.0f;
+        }
+        RJ::RagdollDesc ragdollSettings;
+        ragdollSettings.position = {-6, 4, -5};
+        ragdollSettings.selfCollision = true;
+        auto ragdoll = physics.CreateRagdoll(ragdollParts, ragdollSettings);
+        if (!ragdoll.IsValid())
+            return 1;
+        auto ragdollBodies = physics.GetRagdollBodies(ragdoll);
+
         const auto resetPlayer = [&](Vector3 position) {
             physics.SetPosition(player, {0.0f, 20.0f, 0.0f});
             physics.SetCrouching(player, false);
@@ -219,6 +252,12 @@ int main(int argc, char** argv)
             if (!check(physics.GetCharacterGroundInfo(player).body == platform &&
                 std::abs(physics.GetPosition(player).x - physics.GetPosition(platform).x) < 0.15f, "platform follow"))
                 return 1;
+            for (auto body : ragdollBodies) {
+                const auto position = physics.GetPosition(body);
+                if (!check(std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z) &&
+                    physics.GetBoundingBox(body).min.y > -0.1f, "ragdoll stays above floor"))
+                    return 1;
+            }
             TraceLog(LOG_INFO, "Stage smoke test passed");
             return 0;
         }
@@ -342,6 +381,9 @@ int main(int argc, char** argv)
                 physics.SetRotation(compound, compoundSettings.rotation);
                 physics.SetLinearVelocity(compound, {});
                 physics.SetAngularVelocity(compound, {});
+                physics.DestroyRagdoll(ragdoll);
+                ragdoll = physics.CreateRagdoll(ragdollParts, ragdollSettings);
+                ragdollBodies = physics.GetRagdollBodies(ragdoll);
                 resetPlayer(characterSettings.position);
                 currentArea = "Flat ground";
                 physics.SetGravity({0.0f, -9.81f, 0.0f});
@@ -370,6 +412,8 @@ int main(int argc, char** argv)
             }
             if (IsKeyPressed(KEY_SPACE))
                 physics.AddImpulse(ball, {0.0f, 3000.0f, 0.0f});
+            if (IsKeyPressed(KEY_K))
+                physics.AddImpulse(ragdollBodies.back(), {5, 0, 0});
             if (IsKeyPressed(KEY_G)) {
                 const bool gravityEnabled = Vector3LengthSqr(physics.GetGravity()) > 0.0f;
                 physics.SetGravity(gravityEnabled ? Vector3{0.0f, 0.0f, 0.0f} : Vector3{0.0f, -9.81f, 0.0f});
@@ -492,6 +536,23 @@ int main(int argc, char** argv)
             drawSurface(ramp, rampSettings, ORANGE);
             drawSurface(wall, wallSettings, GRAY);
             DrawGrid(20, 1.0f);
+            for (std::size_t i = 0; i < ragdollBodies.size(); ++i) {
+                const auto body = ragdollBodies[i];
+                const auto& shape = ragdollParts[i].shape;
+                const auto position = physics.GetPosition(body);
+                if (shape.type == RJ::CompoundPartType::Box) {
+                    compoundModel.transform = MatrixMultiply(MatrixScale(shape.size.x, shape.size.y, shape.size.z), physics.GetTransform(body));
+                    DrawModel(compoundModel, {}, 1.0f, PINK);
+                    DrawModelWires(compoundModel, {}, 1.0f, MAROON);
+                } else if (shape.type == RJ::CompoundPartType::Sphere) {
+                    DrawSphere(position, shape.radius, PINK);
+                    DrawSphereWires(position, shape.radius, 8, 12, MAROON);
+                } else {
+                    const auto offset = Vector3RotateByQuaternion({0, shape.height * 0.5f - shape.radius, 0}, physics.GetRotation(body));
+                    DrawCapsule(Vector3Add(position, offset), Vector3Subtract(position, offset), shape.radius, 8, 12, PINK);
+                    DrawCapsuleWires(Vector3Add(position, offset), Vector3Subtract(position, offset), shape.radius, 8, 12, MAROON);
+                }
+            }
             for (const auto& part : compoundParts) {
                 const Matrix localTransform = MatrixMultiply(QuaternionToMatrix(part.localRotation),
                     MatrixTranslate(part.localPosition.x, part.localPosition.y, part.localPosition.z));
@@ -567,6 +628,7 @@ int main(int argc, char** argv)
                     physics.IsActive(ball) ? "Active" : "Sleeping"), 20, 442, 18, DARKGRAY);
                 DrawText(TextFormat("V: toggle CCD (%s)   L: fast drop",
                     physics.IsContinuousCollisionEnabled(ball) ? "On" : "Off"), 20, 466, 18, DARKGRAY);
+                DrawText("K: ragdoll impulse", 20, 490, 18, DARKGRAY);
             }
             EndDrawing();
         }
@@ -582,6 +644,7 @@ int main(int argc, char** argv)
         physics.DestroyBody(ball);
         physics.DestroyBody(capsule);
         physics.DestroyBody(compound);
+        physics.DestroyRagdoll(ragdoll);
         physics.DestroyBody(player);
         physics.DestroyBody(platform);
         physics.DestroyBody(floor);

@@ -14,6 +14,7 @@
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Character/Character.h>
+#include <Jolt/Physics/Constraints/TwoBodyConstraint.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
@@ -429,6 +430,34 @@ namespace RayJolt{
 	};
 
 
+	struct RagdollPartDesc {
+		CompoundPart shape;
+		int parent = -1;
+		float mass = 1.0f;
+		Vector3 jointPosition = {};
+		Quaternion jointRotation = {0, 0, 0, 1};
+		float swingAngleDegrees = 45.0f;
+		float twistMinDegrees = -30.0f;
+		float twistMaxDegrees = 30.0f;
+	};
+
+	struct RagdollDesc {
+		Vector3 position = {};
+		Quaternion rotation = {0, 0, 0, 1};
+		float friction = 0.5f;
+		float restitution = 0.0f;
+		bool selfCollision = false;
+	};
+
+	struct RagdollHandle {
+		bool IsValid() const { return root_.IsValid(); }
+		bool operator==(const RagdollHandle& other) const { return root_ == other.root_; }
+		bool operator!=(const RagdollHandle& other) const { return !(*this == other); }
+	private:
+		friend class PhysicsWorld;
+		BodyHandle root_;
+	};
+
 #ifdef RJ_WITH_RFBX
 	enum class BoneColliderType { Box, Capsule };
 
@@ -567,6 +596,10 @@ namespace RayJolt{
 		BodyHandle CreateStaticMesh(const TriangleMeshData& mesh, const StaticMeshDesc& desc = {});
 		BodyHandle CreateConvexHull(const std::vector<Vector3>& points, const ConvexHullDesc& desc = {});
 		BodyHandle CreateCompound(const std::vector<CompoundPart>& parts, const CompoundDesc& desc = {});
+		RagdollHandle CreateRagdoll(const std::vector<RagdollPartDesc>& parts, const RagdollDesc& desc = {});
+		bool ContainsRagdoll(RagdollHandle ragdoll) const;
+		std::vector<BodyHandle> GetRagdollBodies(RagdollHandle ragdoll) const;
+		bool DestroyRagdoll(RagdollHandle& ragdoll);
 #ifdef RJ_WITH_RFBX
 		RfbxBoneCollider CreateRfbxBoneCollider(const RfbxInstance& instance, const RfbxBoneColliderDesc& desc,
 			Matrix modelTransform = MatrixIdentity());
@@ -636,6 +669,13 @@ namespace RayJolt{
 		std::uint64_t nextBodyGeneration_ = 1;
 		std::unordered_map<std::uint32_t, std::uint64_t> bodyGenerations_;
 		bool initialized_ = false;
+		struct RagdollState {
+			RagdollHandle handle;
+			std::vector<BodyHandle> bodies;
+			std::vector<JPH::Ref<JPH::TwoBodyConstraint>> constraints;
+		};
+		std::vector<RagdollState> ragdolls_;
+		std::uint32_t nextRagdollGroup_ = 0;
 		void UpdateCharacterContacts();
 		void UpdateCharacterSteps(float deltaTime);
 		struct CharacterState {

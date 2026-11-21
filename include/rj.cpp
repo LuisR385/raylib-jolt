@@ -14,6 +14,9 @@
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
+#include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
+#include <Jolt/Physics/Collision/GroupFilterTable.h>
+#include <Jolt/Physics/Body/BodyLockMulti.h>
 //NOTE : ONLY ONE JOLT RUNTIME.
 static RayJolt::JoltRuntime g_joltRuntime;
 
@@ -428,6 +431,10 @@ namespace RayJolt {
     void PhysicsWorld::Shutdown() {
         if (!initialized_)
             return;
+        while (!ragdolls_.empty()) {
+            auto handle = ragdolls_.back().handle;
+            DestroyRagdoll(handle);
+        }
         for (auto& state : characters_)
             state.character->RemoveFromPhysicsSystem();
         characters_.clear();
@@ -683,6 +690,9 @@ namespace RayJolt {
             body = BodyHandle{};
             return false;
         }
+        for (const auto& ragdoll : ragdolls_)
+            if (std::find(ragdoll.bodies.begin(), ragdoll.bodies.end(), body) != ragdoll.bodies.end())
+                return false;
         auto& bodies = physicsSystem_.GetBodyInterface();
         const auto id = body.GetJoltID();
         for (auto it = characters_.begin(); it != characters_.end(); ++it) {
@@ -1319,6 +1329,138 @@ namespace RayJolt {
         settings.mIsSensor = desc.isSensor;
         return RegisterBody(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
             desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
+    }
+
+    RagdollHandle PhysicsWorld::CreateRagdoll(const std::vector<RagdollPartDesc>& parts, const RagdollDesc& desc) {
+        const auto finite = [](Vector3 v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); };
+        const auto normalized = [](Quaternion q, Quaternion& output) {
+            const double length = std::sqrt(double(q.x) * q.x + double(q.y) * q.y + double(q.z) * q.z + double(q.w) * q.w);
+            if (!std::isfinite(length) || length == 0)
+                return false;
+            output = {float(q.x / length), float(q.y / length), float(q.z / length), float(q.w / length)};
+            return true;
+        };
+        Quaternion rootRotation;
+        if (parts.empty() || parts.size() > physicsSystem_.GetMaxBodies() - physicsSystem_.GetNumBodies() ||
+            nextRagdollGroup_ == JPH::CollisionGroup::cInvalidGroup || !finite(desc.position) ||
+            !normalized(desc.rotation, rootRotation) || !std::isfinite(desc.friction) || desc.friction < 0 ||
+            !std::isfinite(desc.restitution) || desc.restitution < 0 || desc.restitution > 1)
+            return {};
+        std::vector<CompoundDesc> bodies(parts.size());
+        std::vector<Vector3> anchors(parts.size());
+        std::vector<Quaternion> jointRotations(parts.size());
+        for (std::size_t i = 0; i < parts.size(); ++i) {
+            const auto& part = parts[i];
+            Quaternion localRotation, jointRotation;
+            if ((i == 0 ? part.parent != -1 : part.parent < 0 || std::size_t(part.parent) >= i) ||
+                !finite(part.shape.localPosition) || !normalized(part.shape.localRotation, localRotation) ||
+                !finite(part.jointPosition) || !normalized(part.jointRotation, jointRotation) ||
+                !std::isfinite(part.mass) || part.mass <= 0 ||
+                !std::isfinite(part.swingAngleDegrees) || part.swingAngleDegrees < 0 || part.swingAngleDegrees > 180 ||
+                !std::isfinite(part.twistMinDegrees) || part.twistMinDegrees < -180 ||
+                !std::isfinite(part.twistMaxDegrees) || part.twistMaxDegrees > 180 || part.twistMinDegrees > part.twistMaxDegrees)
+                return {};
+            bodies[i].position = Vector3Add(desc.position, Vector3RotateByQuaternion(part.shape.localPosition, rootRotation));
+            bodies[i].rotation = QuaternionMultiply(rootRotation, localRotation);
+            bodies[i].mass = part.mass;
+            bodies[i].friction = desc.friction;
+            bodies[i].restitution = desc.restitution;
+            anchors[i] = Vector3Add(desc.position, Vector3RotateByQuaternion(part.jointPosition, rootRotation));
+            jointRotations[i] = QuaternionMultiply(rootRotation, jointRotation);
+            if (!finite(anchors[i]))
+                return {};
+        }
+        RagdollState state;
+        state.bodies.reserve(parts.size());
+        state.constraints.reserve(parts.size() - 1);
+        ragdolls_.reserve(ragdolls_.size() + 1);
+        JPH::Ref<JPH::GroupFilterTable> filter = new JPH::GroupFilterTable(desc.selfCollision ? JPH::uint(parts.size()) : 1);
+        if (desc.selfCollision)
+            for (std::size_t i = 1; i < parts.size(); ++i)
+                filter->DisableCollision(JPH::uint(i), JPH::uint(parts[i].parent));
+        const auto group = nextRagdollGroup_++;
+        std::size_t added = 0;
+        const auto cleanup = [&] {
+            for (std::size_t i = 0; i < added; ++i)
+                physicsSystem_.RemoveConstraint(state.constraints[i]);
+            state.constraints.clear();
+            for (auto body : state.bodies)
+                DestroyBody(body);
+        };
+        try {
+            for (std::size_t i = 0; i < parts.size(); ++i) {
+                auto shape = parts[i].shape;
+                shape.localPosition = {};
+                shape.localRotation = {0, 0, 0, 1};
+                const auto body = CreateCompound({shape}, bodies[i]);
+                if (!body.IsValid()) {
+                    cleanup();
+                    return {};
+                }
+                state.bodies.push_back(body);
+                physicsSystem_.GetBodyInterface().SetCollisionGroup(body.GetJoltID(),
+                    JPH::CollisionGroup(filter, group, desc.selfCollision ? JPH::uint(i) : 0));
+            }
+            for (std::size_t i = 1; i < parts.size(); ++i) {
+                JPH::SwingTwistConstraintSettings joint;
+                joint.mPosition1 = joint.mPosition2 = Detail::ToJoltRVec3(anchors[i]);
+                joint.mTwistAxis1 = joint.mTwistAxis2 = Detail::ToJoltVec3(Vector3RotateByQuaternion({1, 0, 0}, jointRotations[i]));
+                joint.mPlaneAxis1 = joint.mPlaneAxis2 = Detail::ToJoltVec3(Vector3RotateByQuaternion({0, 1, 0}, jointRotations[i]));
+                joint.mNormalHalfConeAngle = joint.mPlaneHalfConeAngle = parts[i].swingAngleDegrees * DEG2RAD;
+                joint.mTwistMinAngle = parts[i].twistMinDegrees * DEG2RAD;
+                joint.mTwistMaxAngle = parts[i].twistMaxDegrees * DEG2RAD;
+                const JPH::BodyID ids[] = {state.bodies[parts[i].parent].GetJoltID(), state.bodies[i].GetJoltID()};
+                JPH::BodyLockMultiWrite lock(physicsSystem_.GetBodyLockInterface(), ids, 2);
+                if (!lock.GetBody(0) || !lock.GetBody(1))
+                    throw std::logic_error("Created ragdoll body does not exist");
+                state.constraints.push_back(joint.Create(*lock.GetBody(0), *lock.GetBody(1)));
+            }
+            for (const auto& constraint : state.constraints) {
+                physicsSystem_.AddConstraint(constraint);
+                ++added;
+            }
+        } catch (...) {
+            cleanup();
+            throw;
+        }
+        state.handle.root_ = state.bodies.front();
+        const auto handle = state.handle;
+        ragdolls_.push_back(std::move(state));
+        return handle;
+    }
+
+    bool PhysicsWorld::ContainsRagdoll(RagdollHandle handle) const {
+        for (const auto& ragdoll : ragdolls_)
+            if (ragdoll.handle == handle)
+                return std::all_of(ragdoll.bodies.begin(), ragdoll.bodies.end(),
+                    [&](BodyHandle body) { return ContainsBody(body); });
+        return false;
+    }
+
+    std::vector<BodyHandle> PhysicsWorld::GetRagdollBodies(RagdollHandle handle) const {
+        if (!ContainsRagdoll(handle))
+            throw std::invalid_argument("Ragdoll does not exist in this world");
+        for (const auto& ragdoll : ragdolls_)
+            if (ragdoll.handle == handle)
+                return ragdoll.bodies;
+        return {};
+    }
+
+    bool PhysicsWorld::DestroyRagdoll(RagdollHandle& handle) {
+        for (auto it = ragdolls_.begin(); it != ragdolls_.end(); ++it) {
+            if (it->handle != handle)
+                continue;
+            for (const auto& constraint : it->constraints)
+                physicsSystem_.RemoveConstraint(constraint);
+            auto bodies = std::move(it->bodies);
+            ragdolls_.erase(it);
+            for (auto body : bodies)
+                DestroyBody(body);
+            handle = {};
+            return true;
+        }
+        handle = {};
+        return false;
     }
 
     BodyHandle PhysicsWorld::CreateStaticMesh(const TriangleMeshData& mesh, const StaticMeshDesc& desc) {

@@ -318,11 +318,11 @@ namespace RayJolt {
         return state_ ? state_->tempAllocator : empty;
     }
 
-    std::unique_ptr<PhysicsWorld> JoltRuntime::CreateWorld() {
+    std::unique_ptr<PhysicsWorld> JoltRuntime::CreateWorld(const WorldSettings& settings) {
         if (!state_)
             throw std::logic_error("JoltRuntime::Init() must succeed before CreateWorld()");
         auto world = std::make_unique<PhysicsWorld>();
-        if (!world->Init())
+        if (!world->Init(settings))
             return nullptr;
         return world;
     }
@@ -404,10 +404,14 @@ namespace RayJolt {
         Shutdown();
     }
 
-    bool PhysicsWorld::Init()
+    bool PhysicsWorld::Init(const WorldSettings& settings)
     {
+        if (settings.maxBodies <= 0 || unsigned(settings.maxBodies) > JPH::BodyID::cMaxBodyIndex ||
+            settings.maxBodyPairs <= 0 || settings.maxContactConstraints <= 0)
+            return false;
         if (initialized_)
-            return true;
+            return settings_.maxBodies == settings.maxBodies && settings_.maxBodyPairs == settings.maxBodyPairs &&
+                settings_.maxContactConstraints == settings.maxContactConstraints;
         if (runtimeState_ != JoltRuntime::activeState_.lock())
             return false;
         layerPairs_.EnableCollision(ObjectLayers::NON_MOVING, ObjectLayers::MOVING);
@@ -417,8 +421,10 @@ namespace RayJolt {
         broadPhaseFilter_ = std::make_unique<JPH::ObjectVsBroadPhaseLayerFilterTable>(
             broadPhaseLayers_, 2, layerPairs_, 2);
 
-        physicsSystem_.Init(1024, 0, 1024, 1024, broadPhaseLayers_, *broadPhaseFilter_, layerPairs_);
+        physicsSystem_.Init(unsigned(settings.maxBodies), 0, unsigned(settings.maxBodyPairs),
+            unsigned(settings.maxContactConstraints), broadPhaseLayers_, *broadPhaseFilter_, layerPairs_);
         physicsSystem_.SetContactListener(&contactListener_);
+        settings_ = settings;
         initialized_ = true;
 
         return true;
@@ -1587,14 +1593,14 @@ namespace RayJolt {
         return result;
     }
 
-    bool RayJoltContext::Init() {
+    bool RayJoltContext::Init(const WorldSettings& settings) {
         if (world_)
-            return true;
+            return world_->Init(settings);
         if (!runtime_.Init())
             return false;
 
         try {
-            auto world = runtime_.CreateWorld();
+            auto world = runtime_.CreateWorld(settings);
             if (!world) {
                 world.reset();
                 runtime_.End();

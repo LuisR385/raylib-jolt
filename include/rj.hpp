@@ -525,6 +525,12 @@ namespace RayJolt{
 
 
 	//raw initialize jolt.
+	struct WorldSettings {
+		int maxBodies = 1024;
+		int maxBodyPairs = 1024;
+		int maxContactConstraints = 1024;
+	};
+
 	class PhysicsWorld;
 
 	class JoltRuntime {
@@ -534,7 +540,7 @@ namespace RayJolt{
 
 		bool Init();
 		void End();
-		std::unique_ptr<PhysicsWorld> CreateWorld();
+		std::unique_ptr<PhysicsWorld> CreateWorld(const WorldSettings& settings = {});
 		JPH::EPhysicsUpdateError Step(PhysicsWorld& world, float deltaTime, int collisionSteps = 1);
 		JPH::EPhysicsUpdateError Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps);
 
@@ -562,7 +568,7 @@ namespace RayJolt{
 		PhysicsWorld(const PhysicsWorld&) = delete;
 		PhysicsWorld& operator=(const PhysicsWorld&) = delete;
 
-		bool Init();
+		bool Init(const WorldSettings& settings = {});
 		void Update(float deltaTime,int collisionStep = 1);
 		void Shutdown();
 		std::vector<ContactEvent> GetContactEvents() const;
@@ -669,6 +675,7 @@ namespace RayJolt{
 		std::uint64_t nextBodyGeneration_ = 1;
 		std::unordered_map<std::uint32_t, std::uint64_t> bodyGenerations_;
 		bool initialized_ = false;
+		WorldSettings settings_;
 		struct RagdollState {
 			RagdollHandle handle;
 			std::vector<BodyHandle> bodies;
@@ -721,7 +728,7 @@ namespace RayJolt{
 
 	class RayJoltContext {
 	public:
-		bool Init();
+		bool Init(const WorldSettings& settings = {});
 		void End();
 		JPH::EPhysicsUpdateError Step(float deltaTime, int collisionSteps = 1);
 		PhysicsWorld& GetWorld();

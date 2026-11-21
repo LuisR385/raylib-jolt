@@ -47,8 +47,12 @@ int main(int argc, char** argv)
     JPH::Trace = JoltTrace;
     JPH_IF_ENABLE_ASSERTS(JPH::AssertFailed = JoltAssert;)
     RJ::RayJoltContext context;
-    if (!context.Init())
+    RJ::WorldSettings worldSettings;
+    worldSettings.maxBodyPairs = 16384;
+    worldSettings.maxContactConstraints = 8192;
+    if (!context.Init(worldSettings))
         return 1;
+    int exitCode = 0;
 
     // Destroy all physics objects before unregistering Jolt's types and factory.
     {
@@ -489,7 +493,12 @@ int main(int argc, char** argv)
                     }
                 }
 #endif
-                context.Step(RJ::timeStep);
+                const auto updateError = context.Step(RJ::timeStep);
+                if (updateError != JPH::EPhysicsUpdateError::None) {
+                    TraceLog(LOG_ERROR, "Physics update failed (mask %u); check WorldSettings body-pair/contact limits", unsigned(updateError));
+                    exitCode = 1;
+                    break;
+                }
                 contactBegins = contactStays = contactEnds = 0;
                 sensorEvents = 0;
                 for (const auto& event : physics.GetContactEvents()) {
@@ -503,6 +512,8 @@ int main(int argc, char** argv)
                 }
                 accumulator -= RJ::timeStep;
             }
+            if (exitCode != 0)
+                break;
             const Vector3 spherePosition = physics.GetPosition(ball);
             const Vector3 capsulePosition = physics.GetPosition(capsule);
             const float halfCylinderHeight = capsuleSettings.height * 0.5f - capsuleSettings.radius;
@@ -650,5 +661,5 @@ int main(int argc, char** argv)
         physics.DestroyBody(floor);
     }
     context.End();
-    return 0;
+    return exitCode;
 }

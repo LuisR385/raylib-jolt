@@ -8,6 +8,8 @@
 #include <limits>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/NarrowPhaseQuery.h>
+#include <Jolt/Physics/Collision/ShapeCast.h>
+#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 //NOTE : ONLY ONE JOLT RUNTIME.
@@ -700,6 +702,7 @@ namespace RayJolt {
             !std::isfinite(desc.mass) || desc.mass <= 0.0f ||
             !std::isfinite(desc.maxSlopeAngleDegrees) || desc.maxSlopeAngleDegrees < 1.0f ||
             desc.maxSlopeAngleDegrees > 90.0f ||
+            !std::isfinite(desc.maxStepHeight) || desc.maxStepHeight < 0.0f ||
             !std::isfinite(desc.position.x) || !std::isfinite(desc.position.y) ||
             !std::isfinite(desc.position.z) ||
             physicsSystem_.GetNumBodies() >= physicsSystem_.GetMaxBodies())
@@ -718,6 +721,7 @@ namespace RayJolt {
         characters_.push_back({character, settings.mShape,
             new JPH::CapsuleShape(halfCylinderHeight * 0.5f, desc.radius),
             desc.height, crouchingHeight, desc.radius});
+        characters_.back().maxStepHeight = desc.maxStepHeight;
         character->AddToPhysicsSystem();
         return BodyHandle(character->GetBodyID());
     }
@@ -767,6 +771,7 @@ namespace RayJolt {
 
             const double length = std::hypot(double(direction.x), double(direction.y));
             const double scale = speed / std::max(1.0, length);
+            state.movement = JPH::Vec3(float(direction.x * scale), 0, float(direction.y * scale));
             auto velocity = character->GetLinearVelocity();
             velocity.SetX(float(direction.x * scale));
             velocity.SetZ(float(direction.y * scale));
@@ -862,6 +867,69 @@ namespace RayJolt {
             return true;
         }
         throw std::invalid_argument("Body is not a character in this world");
+    }
+
+    void PhysicsWorld::UpdateCharacterSteps(float deltaTime) {
+        if (!std::isfinite(deltaTime) || deltaTime <= 0.0f)
+            return;
+        class StepFilter final : public JPH::IgnoreSingleBodyFilter {
+        public:
+            using JPH::IgnoreSingleBodyFilter::IgnoreSingleBodyFilter;
+            bool ShouldCollideLocked(const JPH::Body& body) const override { return !body.IsSensor(); }
+        };
+        class BlockingHit final : public JPH::ClosestHitCollisionCollector<JPH::CastShapeCollector> {
+        public:
+            explicit BlockingHit(JPH::Vec3 direction) : direction_(direction) {}
+            void AddHit(const JPH::ShapeCastResult& hit) override {
+                if (hit.mPenetrationAxis.Dot(direction_) > 1.0e-5f * direction_.Length() * hit.mPenetrationAxis.Length())
+                    JPH::ClosestHitCollisionCollector<JPH::CastShapeCollector>::AddHit(hit);
+            }
+        private:
+            JPH::Vec3 direction_;
+        };
+        for (auto& state : characters_) {
+            const auto movement = state.movement * deltaTime;
+            state.movement = JPH::Vec3::sZero();
+            auto& character = state.character;
+            if (state.maxStepHeight == 0.0f || movement.LengthSq() < 1.0e-8f ||
+                character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround ||
+                character->GetLinearVelocity().GetY() - character->GetGroundVelocity().GetY() > 0.1f ||
+                std::find(jumpingCharacters_.begin(), jumpingCharacters_.end(), character->GetBodyID()) != jumpingCharacters_.end())
+                continue;
+            const StepFilter filter(character->GetBodyID());
+            const auto position = character->GetPosition();
+            const auto cast = [&](JPH::RVec3 start, JPH::Vec3 direction, BlockingHit& hit) {
+                const auto transform = JPH::RMat44::sRotationTranslation(character->GetRotation(), start);
+                const auto shapeCast = JPH::RShapeCast::sFromWorldTransform(character->GetShape(), JPH::Vec3::sReplicate(1), transform, direction);
+                physicsSystem_.GetNarrowPhaseQuery().CastShape(shapeCast, {}, start, hit, {}, {}, filter);
+                return hit.HadHit();
+            };
+            BlockingHit obstacle(movement);
+            if (!cast(position + JPH::RVec3(0, 0.02f, 0), movement, obstacle) ||
+                !character->IsSlopeTooSteep(-obstacle.mHit.mPenetrationAxis.Normalized()))
+                continue;
+            const JPH::Vec3 up(0, state.maxStepHeight + 0.02f, 0);
+            BlockingHit ceiling(up);
+            if (cast(position, up, ceiling))
+                continue;
+            const auto raised = position + up;
+            BlockingHit ahead(movement);
+            if (cast(raised, movement, ahead))
+                continue;
+            const auto down = -up;
+            BlockingHit landing(down);
+            if (!cast(raised + movement, down, landing) ||
+                character->IsSlopeTooSteep(-landing.mHit.mPenetrationAxis.Normalized()))
+                continue;
+            {
+                JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), landing.mHit.mBodyID2);
+                if (!lock.Succeeded() || lock.GetBody().IsDynamic())
+                    continue;
+            }
+            const float rise = up.GetY() * (1.0f - landing.mHit.mFraction);
+            if (rise > 0.02f && rise <= state.maxStepHeight)
+                character->SetPosition(position + JPH::RVec3(0, rise + 0.001f, 0));
+        }
     }
 
     void PhysicsWorld::UpdateCharacterContacts() {
@@ -1093,6 +1161,7 @@ namespace RayJolt {
         if (!world_)
             throw std::logic_error("RayJoltContext::Init() must succeed before Step()");
         world_->contactListener_.Clear();
+        world_->UpdateCharacterSteps(deltaTime);
         const auto result = runtime_.Update(world_->GetPhysicsSystem(), deltaTime, collisionSteps);
         world_->UpdateCharacterContacts();
         return result;
@@ -1129,6 +1198,7 @@ namespace RayJolt {
 
     JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld& physics, float timeStep, int collisionSteps) {
         physics.contactListener_.Clear();
+        physics.UpdateCharacterSteps(timeStep);
         const auto result = g_joltRuntime.Update(physics.GetPhysicsSystem(), timeStep, collisionSteps);
         physics.UpdateCharacterContacts();
         return result;

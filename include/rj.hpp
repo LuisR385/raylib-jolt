@@ -373,6 +373,7 @@ namespace RayJolt{
 		float mass = 80.0f;
 		float maxSlopeAngleDegrees = 50.0f;
 		Vector3 position = { 0.0f, 0.0f, 0.0f };
+		float maxStepHeight = 0.0f;
 	};
 
 	struct BodyHandle {
@@ -559,6 +560,7 @@ namespace RayJolt{
 		friend class RayJoltContext;
 		friend JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld&, float, int);
 		void UpdateCharacterContacts();
+		void UpdateCharacterSteps(float deltaTime);
 		struct CharacterState {
 			JPH::Ref<JPH::Character> character;
 			JPH::RefConst<JPH::Shape> standingShape;
@@ -568,6 +570,8 @@ namespace RayJolt{
 			float radius;
 			bool crouching = false;
 			JPH::Vec3 groundVelocity = JPH::Vec3::sZero();
+			float maxStepHeight = 0.0f;
+			JPH::Vec3 movement = JPH::Vec3::sZero();
 		};
 		std::vector<CharacterState> characters_;
 		std::vector<JPH::BodyID> jumpingCharacters_;

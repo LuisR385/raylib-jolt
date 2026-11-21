@@ -97,6 +97,7 @@ int main(int argc, char** argv)
             return 1;
         RJ::CharacterDesc characterSettings;
         characterSettings.maxSlopeAngleDegrees = 45.0f;
+        characterSettings.maxStepHeight = 0.25f;
         characterSettings.position = {-3.0f, 3.0f, 0.0f};
         RJ::BodyHandle player = physics.CreateCharacter(characterSettings);
         if (!player.IsValid())
@@ -175,6 +176,16 @@ int main(int argc, char** argv)
                     std::abs(hit.point.y - 0.2f * (step + 1)) < 0.01f, "stair height"))
                     return 1;
             }
+            resetPlayer({6.0f, 1.0f, 0.5f});
+            for (int step = 0; step < 60; ++step)
+                context.Step(RJ::timeStep);
+            for (int step = 0; step < 120; ++step) {
+                physics.MoveCharacter(player, {0, 1});
+                context.Step(RJ::timeStep);
+            }
+            const auto stairPosition = physics.GetPosition(player);
+            if (!check(stairPosition.z > 5.4f && stairPosition.y > 1.6f, "climb stairs without jumping"))
+                return 1;
             const Vector3 rampNormal = Vector3RotateByQuaternion({0, 1, 0}, rampSettings.rotation);
             if (!check(physics.CastRay({Vector3Add(rampSettings.position, Vector3Scale(rampNormal, 2)),
                 Vector3Negate(rampNormal)}, 4, hit) && hit.body.GetJoltID() == ramp.GetJoltID(), "ramp ray") ||

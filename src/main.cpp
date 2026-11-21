@@ -137,6 +137,20 @@ int main(int argc, char** argv)
         if (!sensor.IsValid())
             return 1;
 
+        RJ::CompoundPart compoundBase;
+        compoundBase.size = {3.0f, 0.4f, 1.0f};
+        RJ::CompoundPart compoundSide;
+        compoundSide.size = {0.4f, 2.0f, 1.0f};
+        compoundSide.localPosition = {-1.3f, 1.2f, 0};
+        const std::vector<RJ::CompoundPart> compoundParts = {compoundBase, compoundSide};
+        RJ::CompoundDesc compoundSettings;
+        compoundSettings.position = {5.0f, 4.0f, -6.0f};
+        compoundSettings.mass = 10.0f;
+        compoundSettings.restitution = 0.0f;
+        auto compound = physics.CreateCompound(compoundParts, compoundSettings);
+        if (!compound.IsValid())
+            return 1;
+
         const auto resetPlayer = [&](Vector3 position) {
             physics.SetPosition(player, {0.0f, 20.0f, 0.0f});
             physics.SetCrouching(player, false);
@@ -251,6 +265,7 @@ int main(int argc, char** argv)
         Model platformModel = LoadModelFromMesh(GenMeshCube(
             platformSettings.size.x, platformSettings.size.y, platformSettings.size.z));
         Model surfaceModel = LoadModelFromMesh(GenMeshPlane(2.0f, 2.0f, 1, 1));
+        Model compoundModel = LoadModelFromMesh(GenMeshCube(1, 1, 1));
         const auto drawSurface = [&](RJ::BodyHandle body, const RJ::StaticMeshDesc& desc, Color color) {
             surfaceModel.transform = MatrixMultiply(
                 MatrixScale(desc.scale.x, desc.scale.y, desc.scale.z), physics.GetTransform(body));
@@ -302,6 +317,10 @@ int main(int argc, char** argv)
                 physics.SetRotation(capsule, capsuleSettings.rotation);
                 physics.SetLinearVelocity(capsule, {0.0f, 0.0f, 0.0f});
                 physics.SetAngularVelocity(capsule, {0.0f, 0.0f, 0.0f});
+                physics.SetPosition(compound, compoundSettings.position);
+                physics.SetRotation(compound, compoundSettings.rotation);
+                physics.SetLinearVelocity(compound, {});
+                physics.SetAngularVelocity(compound, {});
                 resetPlayer(characterSettings.position);
                 currentArea = "Flat ground";
                 physics.SetGravity({0.0f, -9.81f, 0.0f});
@@ -440,6 +459,14 @@ int main(int argc, char** argv)
             drawSurface(ramp, rampSettings, ORANGE);
             drawSurface(wall, wallSettings, GRAY);
             DrawGrid(20, 1.0f);
+            for (const auto& part : compoundParts) {
+                const Matrix localTransform = MatrixMultiply(QuaternionToMatrix(part.localRotation),
+                    MatrixTranslate(part.localPosition.x, part.localPosition.y, part.localPosition.z));
+                compoundModel.transform = MatrixMultiply(MatrixScale(part.size.x, part.size.y, part.size.z),
+                    MatrixMultiply(localTransform, physics.GetTransform(compound)));
+                DrawModel(compoundModel, {}, 1.0f, VIOLET);
+                DrawModelWires(compoundModel, {}, 1.0f, DARKPURPLE);
+            }
             for (std::size_t i = 0; i < obstacles.size(); ++i) {
                 const auto& obstacle = obstacles[i];
                 if (i < 4)
@@ -507,6 +534,7 @@ int main(int argc, char** argv)
             EndDrawing();
         }
         UnloadModel(surfaceModel);
+        UnloadModel(compoundModel);
         UnloadModel(platformModel);
 #ifdef RJ_WITH_RFBX
         RfbxUnloadModel(&importedModel);
@@ -514,6 +542,7 @@ int main(int argc, char** argv)
         CloseWindow();
         physics.DestroyBody(ball);
         physics.DestroyBody(capsule);
+        physics.DestroyBody(compound);
         physics.DestroyBody(player);
         physics.DestroyBody(platform);
         physics.DestroyBody(floor);

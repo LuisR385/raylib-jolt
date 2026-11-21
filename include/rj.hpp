@@ -367,6 +367,33 @@ namespace RayJolt{
 		bool isSensor = false;
 	};
 
+	enum class CompoundPartType {
+		Box,
+		Sphere,
+		Capsule,
+		ConvexHull
+	};
+
+	struct CompoundPart {
+		CompoundPartType type = CompoundPartType::Box;
+		Vector3 localPosition = {};
+		Quaternion localRotation = {0, 0, 0, 1};
+		Vector3 size = {1, 1, 1};
+		float radius = 0.3f;
+		float height = 1.8f;
+		std::vector<Vector3> points;
+	};
+
+	struct CompoundDesc {
+		Vector3 position = {};
+		Quaternion rotation = {0, 0, 0, 1};
+		MotionType motionType = MotionType::Dynamic;
+		float mass = 1.0f;
+		float friction = 0.2f;
+		float restitution = 0.2f;
+		bool isSensor = false;
+	};
+
 	struct CharacterDesc {
 		float radius = 0.3f;
 		float height = 1.8f;
@@ -504,6 +531,7 @@ namespace RayJolt{
 		BodyHandle CreateBox(const BoxDesc& desc = {});
 		BodyHandle CreateStaticMesh(const TriangleMeshData& mesh, const StaticMeshDesc& desc = {});
 		BodyHandle CreateConvexHull(const std::vector<Vector3>& points, const ConvexHullDesc& desc = {});
+		BodyHandle CreateCompound(const std::vector<CompoundPart>& parts, const CompoundDesc& desc = {});
 		BodyHandle CreateSphere(const SphereDesc& desc = {});
 		BodyHandle CreateCapsule(const CapsuleDesc& desc = {});
 		BodyHandle CreateCharacter(const CharacterDesc& desc = {});

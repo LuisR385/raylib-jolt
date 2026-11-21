@@ -12,6 +12,7 @@
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 //NOTE : ONLY ONE JOLT RUNTIME.
 static RayJolt::JoltRuntime g_joltRuntime;
 
@@ -1020,6 +1021,99 @@ namespace RayJolt {
         settings.mFriction = desc.friction;
         settings.mIsSensor = desc.isSensor;
         settings.mRestitution = desc.restitution;
+        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
+            desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
+    }
+
+    BodyHandle PhysicsWorld::CreateCompound(const std::vector<CompoundPart>& parts, const CompoundDesc& desc) {
+        const auto finite = [](Vector3 value) {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+        };
+        const auto normalize = [](Quaternion value, JPH::Quat& result) {
+            if (!std::isfinite(value.x) || !std::isfinite(value.y) ||
+                !std::isfinite(value.z) || !std::isfinite(value.w))
+                return false;
+            const double length = std::sqrt(double(value.x) * value.x + double(value.y) * value.y +
+                double(value.z) * value.z + double(value.w) * value.w);
+            if (length == 0.0)
+                return false;
+            result = JPH::Quat(float(value.x / length), float(value.y / length),
+                float(value.z / length), float(value.w / length));
+            return true;
+        };
+        JPH::Quat rotation;
+        if (parts.empty() || parts.size() > std::size_t(std::numeric_limits<int>::max()) ||
+            !finite(desc.position) || !normalize(desc.rotation, rotation) ||
+            !std::isfinite(desc.mass) || desc.mass <= 0.0f ||
+            !std::isfinite(desc.friction) || desc.friction < 0.0f ||
+            !std::isfinite(desc.restitution) || desc.restitution < 0.0f || desc.restitution > 1.0f ||
+            (desc.motionType != MotionType::Static && desc.motionType != MotionType::Dynamic && desc.motionType != MotionType::Kinematic))
+            return BodyHandle{};
+        JPH::StaticCompoundShapeSettings compound;
+        for (const auto& part : parts) {
+            JPH::Quat localRotation;
+            if (!finite(part.localPosition) || !normalize(part.localRotation, localRotation))
+                return BodyHandle{};
+            JPH::ShapeSettings::ShapeResult shape;
+            switch (part.type) {
+            case CompoundPartType::Box: {
+                if (!finite(part.size) || part.size.x <= 0 || part.size.y <= 0 || part.size.z <= 0)
+                    return BodyHandle{};
+                const auto halfSize = Detail::ToJoltVec3(part.size) * 0.5f;
+                shape = JPH::BoxShapeSettings(halfSize, std::min(JPH::cDefaultConvexRadius, halfSize.ReduceMin())).Create();
+                break;
+            }
+            case CompoundPartType::Sphere:
+                if (!std::isfinite(part.radius) || part.radius <= 0)
+                    return BodyHandle{};
+                shape = JPH::SphereShapeSettings(part.radius).Create();
+                break;
+            case CompoundPartType::Capsule:
+                if (!std::isfinite(part.radius) || part.radius <= 0 || !std::isfinite(part.height) ||
+                    part.height * 0.5f < part.radius)
+                    return BodyHandle{};
+                shape = JPH::CapsuleShapeSettings(part.height * 0.5f - part.radius, part.radius).Create();
+                break;
+            case CompoundPartType::ConvexHull: {
+                if (part.points.size() < 4 || part.points.size() > std::size_t(std::numeric_limits<int>::max()))
+                    return BodyHandle{};
+                JPH::Array<JPH::Vec3> points;
+                points.reserve(part.points.size());
+                for (const auto& point : part.points) {
+                    if (!finite(point))
+                        return BodyHandle{};
+                    points.push_back(Detail::ToJoltVec3(point));
+                }
+                shape = JPH::ConvexHullShapeSettings(points).Create();
+                break;
+            }
+            default:
+                return BodyHandle{};
+            }
+            if (shape.HasError()) {
+                TraceLog(LOG_WARNING, "Could not create compound part: %s", shape.GetError().c_str());
+                return BodyHandle{};
+            }
+            const float mass = shape.Get()->GetMassProperties().mMass;
+            if (!std::isfinite(mass) || mass <= 0)
+                return BodyHandle{};
+            compound.AddShape(Detail::ToJoltVec3(part.localPosition), localRotation, shape.Get().GetPtr());
+        }
+        const auto shape = compound.Create();
+        if (shape.HasError()) {
+            TraceLog(LOG_WARNING, "Could not create compound: %s", shape.GetError().c_str());
+            return BodyHandle{};
+        }
+        const float mass = shape.Get()->GetMassProperties().mMass;
+        if (!std::isfinite(mass) || mass <= 0)
+            return BodyHandle{};
+        JPH::BodyCreationSettings settings(shape.Get().GetPtr(), Detail::ToJoltRVec3(desc.position), rotation,
+            ToJoltMotionType(desc.motionType), desc.motionType == MotionType::Static ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
+        settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
+        settings.mMassPropertiesOverride.mMass = desc.mass;
+        settings.mFriction = desc.friction;
+        settings.mRestitution = desc.restitution;
+        settings.mIsSensor = desc.isSensor;
         return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
             desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
     }

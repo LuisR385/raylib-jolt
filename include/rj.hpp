@@ -37,6 +37,7 @@
 
 #ifdef RJ_WITH_RFBX
 struct RfbxModel;
+struct RfbxInstance;
 #endif
 
 namespace RayJolt{
@@ -428,6 +429,28 @@ namespace RayJolt{
 	};
 
 
+#ifdef RJ_WITH_RFBX
+	enum class BoneColliderType { Box, Capsule };
+
+	struct RfbxBoneColliderDesc {
+		std::string boneName;
+		BoneColliderType type = BoneColliderType::Capsule;
+		Vector3 localPosition = {};
+		Quaternion localRotation = {0, 0, 0, 1};
+		Vector3 size = {0.2f, 0.4f, 0.2f};
+		float radius = 0.1f;
+		float height = 0.4f;
+		bool isSensor = true;
+	};
+
+	struct RfbxBoneCollider {
+		BodyHandle body;
+		std::string boneName;
+		Matrix localTransform = MatrixIdentity();
+		float scale = 1.0f;
+	};
+#endif
+
 	enum class ContactEventType {
 		Begin,
 		Stay,
@@ -544,6 +567,12 @@ namespace RayJolt{
 		BodyHandle CreateStaticMesh(const TriangleMeshData& mesh, const StaticMeshDesc& desc = {});
 		BodyHandle CreateConvexHull(const std::vector<Vector3>& points, const ConvexHullDesc& desc = {});
 		BodyHandle CreateCompound(const std::vector<CompoundPart>& parts, const CompoundDesc& desc = {});
+#ifdef RJ_WITH_RFBX
+		RfbxBoneCollider CreateRfbxBoneCollider(const RfbxInstance& instance, const RfbxBoneColliderDesc& desc,
+			Matrix modelTransform = MatrixIdentity());
+		bool UpdateRfbxBoneCollider(const RfbxBoneCollider& collider, const RfbxInstance& instance,
+			float deltaTime, Matrix modelTransform = MatrixIdentity());
+#endif
 		BodyHandle CreateSphere(const SphereDesc& desc = {});
 		BodyHandle CreateCapsule(const CapsuleDesc& desc = {});
 		BodyHandle CreateCharacter(const CharacterDesc& desc = {});

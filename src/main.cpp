@@ -226,12 +226,33 @@ int main(int argc, char** argv)
         InitWindow(1280, 720, "rayjolt - physics test stage");
 #ifdef RJ_WITH_RFBX
         RfbxModel importedModel{};
+        RfbxInstance importedInstance{};
+        RJ::RfbxBoneCollider importedBone;
         RJ::BodyHandle importedBody;
         const bool importedDynamic = argc > 3 && TextIsEqual(argv[3], "--dynamic");
+        const bool importedBones = argc > 3 && TextIsEqual(argv[3], "--bones");
         const Matrix importedTransform = MatrixTranslate(0.0f, importedDynamic ? 3.0f : 0.0f, 5.0f);
         if (argc > 1) {
             importedModel = RfbxLoadModel(argv[1]);
-            if (importedModel.valid) {
+            if (importedModel.valid && importedBones) {
+                importedInstance = RfbxCreateInstance(&importedModel);
+                if (importedModel.animationCount > 0)
+                    RfbxPlayAnimation(&importedInstance, 0, true);
+                RJ::RfbxBoneColliderDesc desc;
+                desc.boneName = argv[2];
+                const int bone = RfbxFindBone(&importedModel, argv[2]);
+                if (bone >= 0) {
+                    const Matrix transform = RfbxGetBoneToWorld(&importedInstance, bone);
+                    const float scale = Vector3Length({transform.m0, transform.m1, transform.m2});
+                    if (std::isfinite(scale) && scale > 0) {
+                        desc.radius = 0.12f / scale;
+                        desc.height = 0.5f / scale;
+                        importedBone = physics.CreateRfbxBoneCollider(importedInstance, desc, importedTransform);
+                    }
+                }
+                if (!importedBone.body.IsValid())
+                    TraceLog(LOG_WARNING, "Could not create bone collider: %s", argv[2]);
+            } else if (importedModel.valid) {
                 RfbxModel collisionModel{};
                 const RfbxModel* collisionSource = &importedModel;
                 if (argc > 2) {
@@ -343,6 +364,8 @@ int main(int argc, char** argv)
                     physics.SetLinearVelocity(importedBody, {});
                     physics.SetAngularVelocity(importedBody, {});
                 }
+                if (RfbxIsInstanceValid(&importedInstance) && importedModel.animationCount > 0)
+                    RfbxSetAnimationTime(&importedInstance, 0);
 #endif
             }
             if (IsKeyPressed(KEY_SPACE))
@@ -412,6 +435,16 @@ int main(int argc, char** argv)
                     physics.AddForce(ball, {0.0f, 6000.0f, 0.0f});
                 if (IsKeyDown(KEY_T))
                     physics.AddTorque(capsule, {0.0f, 0.0f, 400.0f});
+#ifdef RJ_WITH_RFBX
+                if (RfbxIsInstanceValid(&importedInstance)) {
+                    RfbxUpdateInstance(&importedInstance, RJ::timeStep);
+                    if (importedBone.body.IsValid() && !physics.UpdateRfbxBoneCollider(
+                        importedBone, importedInstance, RJ::timeStep, importedTransform)) {
+                        TraceLog(LOG_WARNING, "Bone collider pose is unsupported; removing collider");
+                        physics.DestroyBody(importedBone.body);
+                    }
+                }
+#endif
                 context.Step(RJ::timeStep);
                 contactBegins = contactStays = contactEnds = 0;
                 sensorEvents = 0;
@@ -474,7 +507,11 @@ int main(int argc, char** argv)
                 DrawCubeWiresV(obstacle.position, obstacle.size, i < 4 ? DARKBLUE : PURPLE);
             }
 #ifdef RJ_WITH_RFBX
-            if (importedModel.valid)
+            if (RfbxIsInstanceValid(&importedInstance)) {
+                RfbxDrawInstanceMatrix(&importedInstance, importedTransform, WHITE);
+                if (physics.ContainsBody(importedBone.body))
+                    DrawBoundingBox(physics.GetBoundingBox(importedBone.body), RED);
+            } else if (importedModel.valid)
                 RfbxDrawModelMatrix(&importedModel,
                     importedDynamic && importedBody.IsValid() ? physics.GetTransform(importedBody) : importedTransform, WHITE);
 #endif
@@ -537,6 +574,8 @@ int main(int argc, char** argv)
         UnloadModel(compoundModel);
         UnloadModel(platformModel);
 #ifdef RJ_WITH_RFBX
+        physics.DestroyBody(importedBone.body);
+        RfbxUnloadInstance(&importedInstance);
         RfbxUnloadModel(&importedModel);
 #endif
         CloseWindow();

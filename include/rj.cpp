@@ -137,6 +137,110 @@ namespace RayJolt {
             output = std::move(result);
         return validation;
     }
+    static bool GetBoneColliderPose(const RfbxInstance& instance, const std::string& boneName,
+        Matrix localTransform, Matrix modelTransform, Vector3& position, Quaternion& rotation, float& scale) {
+        if (!RfbxIsInstanceValid(&instance) || boneName.empty())
+            return false;
+        const int bone = RfbxFindBone(instance.model, boneName.c_str());
+        if (bone < 0)
+            return false;
+        const Matrix transform = MatrixMultiply(MatrixMultiply(localTransform, RfbxGetBoneToWorld(&instance, bone)),
+            MatrixMultiply(RfbxGetRootMotionCorrection(&instance), modelTransform));
+        for (float value : MatrixToFloatV(transform).v)
+            if (!std::isfinite(value))
+                return false;
+        if (std::abs(transform.m3) > 1.0e-5f || std::abs(transform.m7) > 1.0e-5f ||
+            std::abs(transform.m11) > 1.0e-5f || std::abs(transform.m15 - 1) > 1.0e-5f)
+            return false;
+        Vector3 x = {transform.m0, transform.m1, transform.m2};
+        Vector3 y = {transform.m4, transform.m5, transform.m6};
+        Vector3 z = {transform.m8, transform.m9, transform.m10};
+        scale = Vector3Length(x);
+        if (!std::isfinite(scale) || scale < std::numeric_limits<float>::min() ||
+            std::abs(Vector3Length(y) - scale) > scale * 1.0e-4f ||
+            std::abs(Vector3Length(z) - scale) > scale * 1.0e-4f)
+            return false;
+        x = Vector3Scale(x, 1 / scale);
+        y = Vector3Scale(y, 1 / scale);
+        z = Vector3Scale(z, 1 / scale);
+        const float handedness = Vector3DotProduct(Vector3CrossProduct(x, y), z);
+        if (std::abs(Vector3DotProduct(x, y)) > 1.0e-4f || std::abs(Vector3DotProduct(y, z)) > 1.0e-4f ||
+            std::abs(Vector3DotProduct(z, x)) > 1.0e-4f || std::abs(handedness) < 0.9999f)
+            return false;
+        if (handedness < 0)
+            x = Vector3Negate(x);
+        Matrix orientation = MatrixIdentity();
+        orientation.m0 = x.x; orientation.m1 = x.y; orientation.m2 = x.z;
+        orientation.m4 = y.x; orientation.m5 = y.y; orientation.m6 = y.z;
+        orientation.m8 = z.x; orientation.m9 = z.y; orientation.m10 = z.z;
+        rotation = QuaternionFromMatrix(orientation);
+        position = {transform.m12, transform.m13, transform.m14};
+        return true;
+    }
+
+    RfbxBoneCollider PhysicsWorld::CreateRfbxBoneCollider(const RfbxInstance& instance,
+        const RfbxBoneColliderDesc& desc, Matrix modelTransform) {
+        const auto q = desc.localRotation;
+        const double length = std::sqrt(double(q.x) * q.x + double(q.y) * q.y + double(q.z) * q.z + double(q.w) * q.w);
+        if (!std::isfinite(length) || length == 0)
+            return {};
+        const Quaternion rotation = {float(q.x / length), float(q.y / length), float(q.z / length), float(q.w / length)};
+        RfbxBoneCollider collider;
+        collider.boneName = desc.boneName;
+        collider.localTransform = MatrixMultiply(QuaternionToMatrix(rotation),
+            MatrixTranslate(desc.localPosition.x, desc.localPosition.y, desc.localPosition.z));
+        Vector3 position;
+        Quaternion worldRotation;
+        if (!GetBoneColliderPose(instance, collider.boneName, collider.localTransform, modelTransform,
+            position, worldRotation, collider.scale))
+            return {};
+        if (desc.type == BoneColliderType::Box) {
+            BoxDesc box;
+            box.size = Vector3Scale(desc.size, collider.scale);
+            if (!std::isfinite(box.size.x) || box.size.x <= 0 || !std::isfinite(box.size.y) || box.size.y <= 0 ||
+                !std::isfinite(box.size.z) || box.size.z <= 0)
+                return {};
+            box.position = position;
+            box.rotation = worldRotation;
+            box.motionType = MotionType::Kinematic;
+            box.isSensor = desc.isSensor;
+            collider.body = CreateBox(box);
+        } else if (desc.type == BoneColliderType::Capsule) {
+            CapsuleDesc capsule;
+            capsule.radius = desc.radius * collider.scale;
+            capsule.height = desc.height * collider.scale;
+            capsule.position = position;
+            capsule.rotation = worldRotation;
+            capsule.motionType = MotionType::Kinematic;
+            capsule.isSensor = desc.isSensor;
+            collider.body = CreateCapsule(capsule);
+        }
+        if (!collider.body.IsValid())
+            return {};
+        {
+            JPH::BodyLockWrite lock(physicsSystem_.GetBodyLockInterface(), collider.body.GetJoltID());
+            if (!lock.Succeeded())
+                throw std::logic_error("Created bone collider does not exist");
+            lock.GetBody().SetCollideKinematicVsNonDynamic(true);
+        }
+        return collider;
+    }
+
+    bool PhysicsWorld::UpdateRfbxBoneCollider(const RfbxBoneCollider& collider, const RfbxInstance& instance,
+        float deltaTime, Matrix modelTransform) {
+        if (!ContainsBody(collider.body) || !std::isfinite(deltaTime) || deltaTime <= 0 ||
+            physicsSystem_.GetBodyInterface().GetMotionType(collider.body.GetJoltID()) != JPH::EMotionType::Kinematic ||
+            !std::isfinite(collider.scale) || collider.scale <= 0)
+            return false;
+        Vector3 position;
+        Quaternion rotation;
+        float scale;
+        if (!GetBoneColliderPose(instance, collider.boneName, collider.localTransform, modelTransform, position, rotation, scale) ||
+            std::abs(scale - collider.scale) > collider.scale * 1.0e-4f)
+            return false;
+        MoveKinematic(collider.body, position, rotation, deltaTime);
+        return true;
+    }
 #endif
 
     static JPH::EMotionType ToJoltMotionType(MotionType type) {

@@ -32,6 +32,10 @@
 #include <cstdint>
 #include <string>
 
+#ifdef RJ_WITH_RFBX
+struct RfbxModel;
+#endif
+
 namespace RayJolt{
 	inline static constexpr int  RAYJOLT_VERSION_MAJOR = 0;
 	inline static constexpr int  RAYJOLT_VERSION_MINOR = 2;
@@ -290,7 +294,20 @@ namespace RayJolt{
 		std::string message;
 	};
 
+	struct ConvexHullDesc {
+		Vector3 position = {0.0f, 0.0f, 0.0f};
+		Quaternion rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+		MotionType motionType = MotionType::Dynamic;
+		float mass = 1.0f;
+		float friction = 0.2f;
+		float restitution = 0.2f;
+	};
+
 	MeshValidationResult ValidateTriangleMesh(const TriangleMeshData& mesh);
+#ifdef RJ_WITH_RFBX
+	MeshValidationResult BuildRfbxCollisionMesh(const RfbxModel& model, TriangleMeshData& output,
+		Matrix transform = MatrixIdentity());
+#endif
 
 	struct BoxDesc {
 	public:
@@ -459,6 +476,7 @@ namespace RayJolt{
 
 		BodyHandle CreateBox(const BoxDesc& desc = {});
 		BodyHandle CreateStaticMesh(const TriangleMeshData& mesh, const StaticMeshDesc& desc = {});
+		BodyHandle CreateConvexHull(const std::vector<Vector3>& points, const ConvexHullDesc& desc = {});
 		BodyHandle CreateSphere(const SphereDesc& desc = {});
 		BodyHandle CreateCapsule(const CapsuleDesc& desc = {});
 		BodyHandle CreateCharacter(const CharacterDesc& desc = {});

@@ -1,4 +1,7 @@
 #include "rj.hpp"
+#ifdef RJ_WITH_RFBX
+#include "rfbx.h"
+#endif
 
 // Include Jolt.h before all other Jolt headers.
 #include <Jolt/Jolt.h>
@@ -37,7 +40,7 @@ static bool JoltAssert(const char *expression, const char *message,
 }
 #endif
 
-int main()
+int main(int argc, char** argv)
 {
 
     JPH::Trace = JoltTrace;
@@ -58,6 +61,22 @@ int main()
         floorSettings.scale = {-10.0f, 1.0f, 10.0f};
         RJ::BodyHandle floor = physics.CreateStaticMesh(floorMesh, floorSettings);
         if (!floor.IsValid())
+            return 1;
+
+        RJ::StaticMeshDesc rampSettings;
+        rampSettings.position = {-6.0f, 3.0f * sinf(25.0f * DEG2RAD), 1.5f};
+        rampSettings.rotation = QuaternionFromAxisAngle({1.0f, 0.0f, 0.0f}, 25.0f * DEG2RAD);
+        rampSettings.scale = {2.0f, 1.0f, 3.0f};
+        const auto ramp = physics.CreateStaticMesh(floorMesh, rampSettings);
+        if (!ramp.IsValid())
+            return 1;
+
+        RJ::StaticMeshDesc wallSettings;
+        wallSettings.position = {4.0f, 1.5f, -3.0f};
+        wallSettings.rotation = QuaternionFromAxisAngle({1.0f, 0.0f, 0.0f}, 90.0f * DEG2RAD);
+        wallSettings.scale = {2.0f, 1.0f, 1.5f};
+        const auto wall = physics.CreateStaticMesh(floorMesh, wallSettings);
+        if (!wall.IsValid())
             return 1;
 
         constexpr float radius = 0.5f;
@@ -88,12 +107,54 @@ int main()
         RJ::BodyHandle platform = physics.CreateBox(platformSettings);
         if (!platform.IsValid())
             return 1;
-        RJ::RJ_OptimizeBroadPhase(physics);
-
         SetConfigFlags(FLAG_MSAA_4X_HINT);
         InitWindow(1280, 720, "rayjolt - raylib + Jolt Hello World");
+#ifdef RJ_WITH_RFBX
+        RfbxModel importedModel{};
+        RJ::BodyHandle importedBody;
+        const bool importedDynamic = argc > 3 && TextIsEqual(argv[3], "--dynamic");
+        const Matrix importedTransform = MatrixTranslate(0.0f, importedDynamic ? 3.0f : 0.0f, 5.0f);
+        if (argc > 1) {
+            importedModel = RfbxLoadModel(argv[1]);
+            if (importedModel.valid) {
+                RfbxModel collisionModel{};
+                const RfbxModel* collisionSource = &importedModel;
+                if (argc > 2) {
+                    collisionModel = RfbxLoadModel(argv[2]);
+                    collisionSource = &collisionModel;
+                }
+                RJ::TriangleMeshData collisionMesh;
+                const auto result = RJ::BuildRfbxCollisionMesh(*collisionSource, collisionMesh,
+                    importedDynamic ? MatrixIdentity() : importedTransform);
+                if (result.valid) {
+                    if (importedDynamic) {
+                        RJ::ConvexHullDesc desc;
+                        desc.position = {0.0f, 3.0f, 5.0f};
+                        desc.mass = 10.0f;
+                        importedBody = physics.CreateConvexHull(collisionMesh.vertices, desc);
+                    } else {
+                        importedBody = physics.CreateStaticMesh(collisionMesh);
+                    }
+                    if (!importedBody.IsValid())
+                        TraceLog(LOG_WARNING, "Could not create FBX collision body");
+                } else {
+                    TraceLog(LOG_WARNING, "FBX collision mesh: %s", result.message.c_str());
+                }
+                RfbxUnloadModel(&collisionModel);
+            } else {
+                TraceLog(LOG_WARNING, "Could not load FBX render model: %s", argv[1]);
+            }
+        }
+#endif
+        RJ::RJ_OptimizeBroadPhase(physics);
         Model platformModel = LoadModelFromMesh(GenMeshCube(
             platformSettings.size.x, platformSettings.size.y, platformSettings.size.z));
+        Model surfaceModel = LoadModelFromMesh(GenMeshPlane(2.0f, 2.0f, 1, 1));
+        const auto drawSurface = [&](RJ::BodyHandle body, const RJ::StaticMeshDesc& desc, Color color) {
+            surfaceModel.transform = MatrixMultiply(
+                MatrixScale(desc.scale.x, desc.scale.y, desc.scale.z), physics.GetTransform(body));
+            DrawModel(surfaceModel, {0.0f, 0.0f, 0.0f}, 1.0f, color);
+        };
         SetTargetFPS(60);
         Camera3D camera{};
         camera.position = {12.0f, 9.0f, 12.0f};
@@ -217,7 +278,14 @@ int main()
             ClearBackground(RAYWHITE);
             BeginMode3D(camera);
             DrawPlane({0.0f, 0.0f, 0.0f}, {20.0f, 20.0f}, LIGHTGRAY);
+            drawSurface(ramp, rampSettings, ORANGE);
+            drawSurface(wall, wallSettings, GRAY);
             DrawGrid(20, 1.0f);
+#ifdef RJ_WITH_RFBX
+            if (importedModel.valid)
+                RfbxDrawModelMatrix(&importedModel,
+                    importedDynamic && importedBody.IsValid() ? physics.GetTransform(importedBody) : importedTransform, WHITE);
+#endif
             platformModel.transform = physics.GetTransform(platform);
             DrawModel(platformModel, {0.0f, 0.0f, 0.0f}, 1.0f, BEIGE);
             DrawModelWires(platformModel, {0.0f, 0.0f, 0.0f}, 1.0f, BROWN);
@@ -261,7 +329,11 @@ int main()
                 physics.IsContinuousCollisionEnabled(ball) ? "On" : "Off"), 20, 392, 20, DARKGRAY);
             EndDrawing();
         }
+        UnloadModel(surfaceModel);
         UnloadModel(platformModel);
+#ifdef RJ_WITH_RFBX
+        RfbxUnloadModel(&importedModel);
+#endif
         CloseWindow();
         physics.DestroyBody(ball);
         physics.DestroyBody(capsule);

@@ -1,4 +1,7 @@
 #include "rj.hpp"
+#ifdef RJ_WITH_RFBX
+#include "rfbx.h"
+#endif
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
@@ -6,6 +9,7 @@
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/NarrowPhaseQuery.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 //NOTE : ONLY ONE JOLT RUNTIME.
 static RayJolt::JoltRuntime g_joltRuntime;
 
@@ -46,6 +50,57 @@ namespace RayJolt {
         }
         return {true, {}};
     }
+
+#ifdef RJ_WITH_RFBX
+    MeshValidationResult BuildRfbxCollisionMesh(const RfbxModel& model, TriangleMeshData& output, Matrix transform) {
+        output = {};
+        if (!model.valid || !model.nodes || !model.meshes)
+            return {false, "Invalid rfbx model"};
+
+        TriangleMeshData result;
+        for (int i = 0; i < model.nodeCount; ++i) {
+            const auto& node = model.nodes[i];
+            if (!node.visible || node.meshIndex < 0)
+                continue;
+            if (node.meshIndex >= model.meshCount)
+                return {false, "Invalid rfbx node mesh index"};
+            const auto& mesh = model.meshes[node.meshIndex];
+            if (mesh.hasSkinning || mesh.primitiveCount == 0)
+                continue;
+            if (!mesh.primitives)
+                return {false, "Missing rfbx mesh primitives"};
+
+            const auto matrix = MatrixMultiply(node.geometryToWorld, transform);
+            const float determinant = MatrixDeterminant(matrix);
+            if (!std::isfinite(determinant) || determinant == 0.0f)
+                return {false, "Invalid rfbx geometry transform"};
+            for (int j = 0; j < mesh.primitiveCount; ++j) {
+                const auto& primitive = mesh.primitives[j].mesh;
+                if (!primitive.vertices || primitive.vertexCount <= 0 ||
+                    primitive.vertexCount % 3 != 0 || primitive.indices ||
+                    primitive.triangleCount != primitive.vertexCount / 3)
+                    return {false, "Invalid rfbx triangle stream"};
+                const auto base = result.vertices.size();
+                if (base > std::numeric_limits<std::uint32_t>::max() - std::uint32_t(primitive.vertexCount))
+                    return {false, "Too many rfbx collision vertices"};
+                for (int k = 0; k < primitive.vertexCount; ++k) {
+                    const auto* p = primitive.vertices + std::size_t(k) * 3;
+                    result.vertices.push_back(Vector3Transform({p[0], p[1], p[2]}, matrix));
+                }
+                for (int k = 0; k < primitive.vertexCount; k += 3) {
+                    const auto a = static_cast<std::uint32_t>(base + k);
+                    result.indices.push_back(a);
+                    result.indices.push_back(a + (determinant < 0.0f ? 2 : 1));
+                    result.indices.push_back(a + (determinant < 0.0f ? 1 : 2));
+                }
+            }
+        }
+        const auto validation = ValidateTriangleMesh(result);
+        if (validation.valid)
+            output = std::move(result);
+        return validation;
+    }
+#endif
 
     static JPH::EMotionType ToJoltMotionType(MotionType type) {
         switch (type) {
@@ -789,6 +844,52 @@ namespace RayJolt {
             lock.GetBody().GetWorldSpaceSurfaceNormal(result.mSubShapeID2, point));
         hit.distance = result.mFraction * maxDistance;
         return true;
+    }
+
+    BodyHandle PhysicsWorld::CreateConvexHull(const std::vector<Vector3>& points, const ConvexHullDesc& desc) {
+        if (points.size() < 4 || points.size() > std::size_t(std::numeric_limits<int>::max()) ||
+            !std::isfinite(desc.mass) || desc.mass <= 0.0f ||
+            !std::isfinite(desc.friction) || desc.friction < 0.0f ||
+            !std::isfinite(desc.restitution) || desc.restitution < 0.0f || desc.restitution > 1.0f ||
+            !std::isfinite(desc.position.x) || !std::isfinite(desc.position.y) || !std::isfinite(desc.position.z) ||
+            !std::isfinite(desc.rotation.x) || !std::isfinite(desc.rotation.y) ||
+            !std::isfinite(desc.rotation.z) || !std::isfinite(desc.rotation.w)) {
+            TraceLog(LOG_WARNING, "Invalid convex hull points or settings");
+            return BodyHandle{};
+        }
+        const auto motionType = ToJoltMotionType(desc.motionType);
+        const double length = std::sqrt(double(desc.rotation.x) * desc.rotation.x + double(desc.rotation.y) * desc.rotation.y +
+            double(desc.rotation.z) * desc.rotation.z + double(desc.rotation.w) * desc.rotation.w);
+        if (length == 0.0)
+            return BodyHandle{};
+        JPH::Array<JPH::Vec3> vertices;
+        vertices.reserve(points.size());
+        for (const auto& point : points) {
+            if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+                return BodyHandle{};
+            vertices.push_back(Detail::ToJoltVec3(point));
+        }
+        JPH::ConvexHullShapeSettings shapeSettings(vertices);
+        const auto shape = shapeSettings.Create();
+        if (shape.HasError()) {
+            TraceLog(LOG_WARNING, "Could not create convex hull: %s", shape.GetError().c_str());
+            return BodyHandle{};
+        }
+        const float shapeMass = shape.Get()->GetMassProperties().mMass;
+        if (!std::isfinite(shapeMass) || shapeMass <= 0.0f) {
+            TraceLog(LOG_WARNING, "Convex hull must have non-zero volume");
+            return BodyHandle{};
+        }
+        const JPH::Quat rotation(float(desc.rotation.x / length), float(desc.rotation.y / length),
+            float(desc.rotation.z / length), float(desc.rotation.w / length));
+        JPH::BodyCreationSettings settings(shape.Get().GetPtr(), Detail::ToJoltRVec3(desc.position), rotation,
+            motionType, desc.motionType == MotionType::Static ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
+        settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
+        settings.mMassPropertiesOverride.mMass = desc.mass;
+        settings.mFriction = desc.friction;
+        settings.mRestitution = desc.restitution;
+        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
+            desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
     }
 
     BodyHandle PhysicsWorld::CreateStaticMesh(const TriangleMeshData& mesh, const StaticMeshDesc& desc) {

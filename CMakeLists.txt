@@ -29,6 +29,25 @@ target_include_directories(rayjolt PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
 target_compile_features(rayjolt PRIVATE cxx_std_17)
 target_link_libraries(rayjolt PRIVATE raylib Jolt)
 
+option(RJ_ENABLE_RFBX "Build bundled rfbx support" ON)
+if(RJ_ENABLE_RFBX)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/rfbx.h" OR
+       NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/ufbx/ufbx.c" OR
+       NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/ufbx/ufbx.h")
+        message(FATAL_ERROR "rfbx requires include/rfbx.h and external/ufbx/ufbx.c/.h")
+    endif()
+    file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rfbx_impl.c"
+        CONTENT "#define RFBX_IMPLEMENTATION\n#include \"rfbx.h\"\n")
+    add_library(rayjolt_rfbx STATIC
+        "${CMAKE_CURRENT_BINARY_DIR}/rfbx_impl.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/external/ufbx/ufbx.c")
+    target_include_directories(rayjolt_rfbx PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/ufbx")
+    target_compile_definitions(rayjolt_rfbx PUBLIC RJ_WITH_RFBX)
+    target_link_libraries(rayjolt_rfbx PUBLIC raylib)
+    target_link_libraries(rayjolt PRIVATE rayjolt_rfbx)
+endif()
+
 option(RJ_BUILD_TESTS "Build RayJolt lifetime tests" OFF)
 if(RJ_BUILD_TESTS)
     enable_testing()
@@ -36,6 +55,9 @@ if(RJ_BUILD_TESTS)
     target_include_directories(rayjolt_body_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_compile_features(rayjolt_body_tests PRIVATE cxx_std_17)
     target_link_libraries(rayjolt_body_tests PRIVATE raylib Jolt)
+    if(TARGET rayjolt_rfbx)
+        target_link_libraries(rayjolt_body_tests PRIVATE rayjolt_rfbx)
+    endif()
     add_test(NAME body_lifetime COMMAND rayjolt_body_tests)
 endif()
 
@@ -46,5 +68,8 @@ if(RJ_BUILD_MESH_TESTS)
     target_include_directories(rayjolt_mesh_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_compile_features(rayjolt_mesh_tests PRIVATE cxx_std_17)
     target_link_libraries(rayjolt_mesh_tests PRIVATE raylib Jolt)
+    if(TARGET rayjolt_rfbx)
+        target_link_libraries(rayjolt_mesh_tests PRIVATE rayjolt_rfbx)
+    endif()
     add_test(NAME triangle_mesh_validation COMMAND rayjolt_mesh_tests)
 endif()

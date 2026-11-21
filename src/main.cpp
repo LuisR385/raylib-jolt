@@ -127,6 +127,15 @@ int main(int argc, char** argv)
             if (!physics.CreateBox(desc).IsValid())
                 return 1;
 
+        RJ::BoxDesc sensorSettings;
+        sensorSettings.position = {0.0f, 1.0f, 3.0f};
+        sensorSettings.size = {3.0f, 2.0f, 3.0f};
+        sensorSettings.motionType = RJ::MotionType::Static;
+        sensorSettings.isSensor = true;
+        const auto sensor = physics.CreateBox(sensorSettings);
+        if (!sensor.IsValid())
+            return 1;
+
         const auto resetPlayer = [&](Vector3 position) {
             physics.SetPosition(player, {0.0f, 20.0f, 0.0f});
             physics.SetCrouching(player, false);
@@ -252,6 +261,7 @@ int main(int argc, char** argv)
         int contactBegins = 0;
         int contactStays = 0;
         int contactEnds = 0;
+        int sensorEvents = 0;
         const char* currentArea = "Flat ground";
         while (!WindowShouldClose())
         {
@@ -374,7 +384,10 @@ int main(int argc, char** argv)
                     physics.AddTorque(capsule, {0.0f, 0.0f, 400.0f});
                 context.Step(RJ::timeStep);
                 contactBegins = contactStays = contactEnds = 0;
+                sensorEvents = 0;
                 for (const auto& event : physics.GetContactEvents()) {
+                    if (event.bodyA.GetJoltID() == sensor.GetJoltID() || event.bodyB.GetJoltID() == sensor.GetJoltID())
+                        ++sensorEvents;
                     switch (event.type) {
                     case RJ::ContactEventType::Begin: ++contactBegins; break;
                     case RJ::ContactEventType::Stay: ++contactStays; break;
@@ -449,6 +462,7 @@ int main(int argc, char** argv)
                 DrawSphere(mouseHit.point, 0.08f, RED);
                 DrawLine3D(mouseHit.point, Vector3Add(mouseHit.point, mouseHit.normal), RED);
             }
+            DrawCubeWiresV(sensorSettings.position, sensorSettings.size, ORANGE);
             EndMode3D();
             DrawRectangle(12, 12, 750, 196, Fade(RAYWHITE, 0.9f));
             DrawText("rayjolt | physics test stage", 20, 20, 24, DARKGRAY);
@@ -458,8 +472,8 @@ int main(int argc, char** argv)
             DrawText(TextFormat("Position: %.2f, %.2f, %.2f | %s", playerPosition.x, playerPosition.y, playerPosition.z,
                 physics.IsCrouching(player) ? "Crouching" : "Standing"), 20, 132, 18, DARKGRAY);
             DrawText("R: full reset   F1: physics controls   Esc: exit", 20, 156, 18, DARKGRAY);
-            DrawText(TextFormat("Contacts / step: Begin %d   Stay %d   End %d",
-                contactBegins, contactStays, contactEnds), 20, 180, 18, DARKGRAY);
+            DrawText(TextFormat("Contacts: Begin %d   Stay %d   End %d | Orange sensor: %d",
+                contactBegins, contactStays, contactEnds, sensorEvents), 20, 180, 18, DARKGRAY);
             DrawFPS(GetScreenWidth() - 100, 20);
             if (showDebugControls) {
                 DrawRectangle(12, 214, 750, 300, Fade(RAYWHITE, 0.9f));

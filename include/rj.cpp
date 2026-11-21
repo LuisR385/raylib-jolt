@@ -226,6 +226,12 @@ namespace RayJolt {
         return contactListener_.GetEvents();
     }
 
+    bool PhysicsWorld::IsSensor(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return physicsSystem_.GetBodyInterface().IsSensor(body.GetJoltID());
+    }
+
     PhysicsWorld::~PhysicsWorld() {
         physicsSystem_.SetContactListener(nullptr);
         Shutdown();
@@ -519,6 +525,7 @@ namespace RayJolt {
             Detail::ToJoltQuaternion(desc.rotation),
             motionType,
             desc.motionType == MotionType::Static ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
+        settings.mIsSensor = desc.isSensor;
         settings.mRestitution = desc.restitution;
         settings.mFriction = desc.friction;
         return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
@@ -544,6 +551,7 @@ namespace RayJolt {
             Detail::ToJoltQuaternion(desc.rotation),
             motionType,
             desc.motionType == MotionType::Static ? ObjectLayers::NON_MOVING : ObjectLayers::MOVING);
+        settings.mIsSensor = desc.isSensor;
         settings.mRestitution = desc.restitution;
         settings.mFriction = desc.friction;
         return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
@@ -942,6 +950,7 @@ namespace RayJolt {
         settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
         settings.mMassPropertiesOverride.mMass = desc.mass;
         settings.mFriction = desc.friction;
+        settings.mIsSensor = desc.isSensor;
         settings.mRestitution = desc.restitution;
         return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
             desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
@@ -1013,6 +1022,7 @@ namespace RayJolt {
             float(desc.rotation.z / rotationLength), float(desc.rotation.w / rotationLength));
         JPH::BodyCreationSettings settings(shape.Get().GetPtr(), Detail::ToJoltRVec3(desc.position),
             rotation, JPH::EMotionType::Static, ObjectLayers::NON_MOVING);
+        settings.mIsSensor = desc.isSensor;
         return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings, JPH::EActivation::DontActivate));
     }
 
@@ -1033,6 +1043,7 @@ namespace RayJolt {
             layer
         );
 
+        settings.mIsSensor = desc.isSensor;
         settings.mRestitution = desc.restitution;
         settings.mFriction = desc.friction;
 

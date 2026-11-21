@@ -289,6 +289,7 @@ namespace RayJolt{
 		Quaternion rotation = {0.0f, 0.0f, 0.0f, 1.0f};
 		Vector3 scale = {1.0f, 1.0f, 1.0f};
 		bool flipWinding = false;
+		bool isSensor = false;
 	};
 
 	struct MeshValidationResult {
@@ -303,6 +304,7 @@ namespace RayJolt{
 		float mass = 1.0f;
 		float friction = 0.2f;
 		float restitution = 0.2f;
+		bool isSensor = false;
 	};
 
 	MeshValidationResult ValidateTriangleMesh(const TriangleMeshData& mesh);
@@ -319,6 +321,7 @@ namespace RayJolt{
         MotionType motionType = MotionType::Dynamic;
         float restitution = 0.2f;
         float friction = 0.2f;
+		bool isSensor = false;
 
 
 		BoxDesc() = default;
@@ -340,6 +343,7 @@ namespace RayJolt{
 		MotionType motionType = MotionType::Dynamic;
 		float restitution = 0.2f;
 		float friction = 0.2f;
+		bool isSensor = false;
 
 
 		SphereDesc() = default;
@@ -360,6 +364,7 @@ namespace RayJolt{
 		MotionType motionType = MotionType::Dynamic;
 		float restitution = 0.2f;
 		float friction = 0.2f;
+		bool isSensor = false;
 	};
 
 	struct CharacterDesc {
@@ -469,6 +474,7 @@ namespace RayJolt{
 		void Update(float deltaTime,int collisionStep = 1);
 		void Shutdown();
 		std::vector<ContactEvent> GetContactEvents() const;
+		bool IsSensor(BodyHandle body) const;
 		void SetGravity(Vector3 gravity);
 		Vector3 GetGravity() const;
 		void SetGravityFactor(BodyHandle body, float factor);

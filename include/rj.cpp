@@ -31,7 +31,12 @@ namespace RayJolt {
         }
     }
 
-    PhysicsWorld::PhysicsWorld() : worldId_(NextWorldId()) {}
+    PhysicsWorld::PhysicsWorld() : runtimeState_([] {
+        auto state = JoltRuntime::activeState_.lock();
+        if (!state)
+            throw std::logic_error("JoltRuntime::Init() must succeed before creating a PhysicsWorld");
+        return state;
+    }()), worldId_(NextWorldId()) {}
 
     BodyHandle PhysicsWorld::RegisterBody(JPH::BodyID id) {
         if (id.IsInvalid())
@@ -143,67 +148,76 @@ namespace RayJolt {
         throw std::invalid_argument("Unknown motion type");
     }
 
-    JoltRuntime::~JoltRuntime() {
-        if (isInitialized)
-            End();
-    }
+    struct JoltRuntime::State {
+        std::unique_ptr<JPH::Factory> factory;
+        std::unique_ptr<JPH::TempAllocatorImpl> tempAllocator;
+        std::unique_ptr<JPH::JobSystemThreadPool> jobSystem;
+        std::mutex updateMutex;
 
-    //====================Start declare Struct/Class INFO====================
+        ~State() {
+            jobSystem.reset();
+            tempAllocator.reset();
+            if (factory) {
+                JPH::UnregisterTypes();
+                JPH::Factory::sInstance = nullptr;
+                factory.reset();
+                TraceLog(LOG_INFO, "rayjolt Runtime resources released.");
+            }
+        }
 
+        JPH::EPhysicsUpdateError Update(JPH::PhysicsSystem& physics, float deltaTime, int collisionSteps) {
+            return physics.Update(deltaTime, collisionSteps, tempAllocator.get(), jobSystem.get());
+        }
+    };
+
+    std::weak_ptr<JoltRuntime::State> JoltRuntime::activeState_;
+
+    JoltRuntime::~JoltRuntime() = default;
 
     bool JoltRuntime::Init() {
-
-        // 同じオブジェクトでの二重初期化を防ぐ
-
-        if (!isInitialized) {
-            if (JPH::Factory::sInstance != nullptr)
-                return false;
-            JPH::RegisterDefaultAllocator();
-
-            JPH::Factory::sInstance = new JPH::Factory();
-
-            JPH::RegisterTypes();
-
-            tempAllocator_ =
-                std::make_unique<JPH::TempAllocatorImpl>(
-                    10 * 1024 * 1024);
-
-            const unsigned cores = std::thread::hardware_concurrency();
-            jobSystem_ =
-                std::make_unique<JPH::JobSystemThreadPool>(
-                    JPH::cMaxPhysicsJobs,
-                    JPH::cMaxPhysicsBarriers,
-                    static_cast<int>(cores > 1 ? cores - 1 : 1)
-                );
-
-            isInitialized = true;
-            TraceLog(LOG_INFO, "ray jolt Initialized Success."); //TODO : call rayjolt version api.
+        if (state_)
             return true;
-        }
-        TraceLog(LOG_INFO, "ray jolt Initialize failed.");
-        return false;
+        if (JPH::Factory::sInstance != nullptr)
+            return false;
+        auto state = std::make_shared<State>();
+        JPH::RegisterDefaultAllocator();
+        state->factory = std::make_unique<JPH::Factory>();
+        JPH::Factory::sInstance = state->factory.get();
+        JPH::RegisterTypes();
+        state->tempAllocator = std::make_unique<JPH::TempAllocatorImpl>(10 * 1024 * 1024);
+        const unsigned cores = std::thread::hardware_concurrency();
+        state->jobSystem = std::make_unique<JPH::JobSystemThreadPool>(JPH::cMaxPhysicsJobs,
+            JPH::cMaxPhysicsBarriers, static_cast<int>(cores > 1 ? cores - 1 : 1));
+        state_ = std::move(state);
+        activeState_ = state_;
+        TraceLog(LOG_INFO, "rayjolt Runtime initialized.");
+        return true;
     }
 
-    void JoltRuntime::End()
-    {
-        // 初期化していなければ、片付けも不要
-
-        if (isInitialized) {
-            jobSystem_.reset();
-            tempAllocator_.reset();
-
-            JPH::UnregisterTypes();
-
-            delete JPH::Factory::sInstance;
-            JPH::Factory::sInstance = nullptr;
-            isInitialized = false;
-            TraceLog(LOG_INFO, "rayjolt Process finished successfully.");
+    void JoltRuntime::End() {
+        if (!state_)
             return;
-        }
-        
-        TraceLog(LOG_INFO, "rayjolt Process failed successfully!");
-        
-    
+        activeState_.reset();
+        state_.reset();
+    }
+
+    const std::unique_ptr<JPH::JobSystemThreadPool>& JoltRuntime::GetJobSystem() const {
+        static const std::unique_ptr<JPH::JobSystemThreadPool> empty;
+        return state_ ? state_->jobSystem : empty;
+    }
+
+    const std::unique_ptr<JPH::TempAllocatorImpl>& JoltRuntime::GetTempAllocator() const {
+        static const std::unique_ptr<JPH::TempAllocatorImpl> empty;
+        return state_ ? state_->tempAllocator : empty;
+    }
+
+    std::unique_ptr<PhysicsWorld> JoltRuntime::CreateWorld() {
+        if (!state_)
+            throw std::logic_error("JoltRuntime::Init() must succeed before CreateWorld()");
+        auto world = std::make_unique<PhysicsWorld>();
+        if (!world->Init())
+            return nullptr;
+        return world;
     }
 
     void PhysicsWorld::ContactEventListener::Record(ContactEventType type, const JPH::Body& a,
@@ -287,6 +301,8 @@ namespace RayJolt {
     {
         if (initialized_)
             return true;
+        if (runtimeState_ != JoltRuntime::activeState_.lock())
+            return false;
         layerPairs_.EnableCollision(ObjectLayers::NON_MOVING, ObjectLayers::MOVING);
         layerPairs_.EnableCollision(ObjectLayers::MOVING, ObjectLayers::MOVING);
         broadPhaseLayers_.MapObjectToBroadPhaseLayer(ObjectLayers::NON_MOVING, BroadPhaseLayers::NON_MOVING);
@@ -1302,8 +1318,27 @@ namespace RayJolt {
 
     JPH::EPhysicsUpdateError JoltRuntime::Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps)
     {
-        JPH_ASSERT(isInitialized);
-        return physics.Update(timeStep, collisionSteps, tempAllocator_.get(), jobSystem_.get());
+        if (!state_)
+            throw std::logic_error("JoltRuntime::Init() must succeed before Update()");
+        if (!std::isfinite(timeStep) || timeStep <= 0 || collisionSteps <= 0)
+            throw std::invalid_argument("Time step and collision steps must be positive");
+        std::lock_guard<std::mutex> lock(state_->updateMutex);
+        return state_->Update(physics, timeStep, collisionSteps);
+    }
+
+    JPH::EPhysicsUpdateError JoltRuntime::Step(PhysicsWorld& world, float deltaTime, int collisionSteps) {
+        if (!state_)
+            throw std::logic_error("JoltRuntime::Init() must succeed before Step()");
+        if (!world.initialized_ || world.runtimeState_ != state_)
+            throw std::invalid_argument("World does not belong to this Runtime");
+        if (!std::isfinite(deltaTime) || deltaTime <= 0 || collisionSteps <= 0)
+            throw std::invalid_argument("Time step and collision steps must be positive");
+        std::lock_guard<std::mutex> lock(state_->updateMutex);
+        world.contactListener_.Clear();
+        world.UpdateCharacterSteps(deltaTime);
+        const auto result = state_->Update(world.GetPhysicsSystem(), deltaTime, collisionSteps);
+        world.UpdateCharacterContacts();
+        return result;
     }
 
     bool RayJoltContext::Init() {
@@ -1313,8 +1348,8 @@ namespace RayJolt {
             return false;
 
         try {
-            auto world = std::make_unique<PhysicsWorld>();
-            if (!world->Init()) {
+            auto world = runtime_.CreateWorld();
+            if (!world) {
                 world.reset();
                 runtime_.End();
                 return false;
@@ -1337,11 +1372,7 @@ namespace RayJolt {
     JPH::EPhysicsUpdateError RayJoltContext::Step(float deltaTime, int collisionSteps) {
         if (!world_)
             throw std::logic_error("RayJoltContext::Init() must succeed before Step()");
-        world_->contactListener_.Clear();
-        world_->UpdateCharacterSteps(deltaTime);
-        const auto result = runtime_.Update(world_->GetPhysicsSystem(), deltaTime, collisionSteps);
-        world_->UpdateCharacterContacts();
-        return result;
+        return runtime_.Step(*world_, deltaTime, collisionSteps);
     }
 
     PhysicsWorld& RayJoltContext::GetWorld() {
@@ -1374,11 +1405,7 @@ namespace RayJolt {
     }
 
     JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld& physics, float timeStep, int collisionSteps) {
-        physics.contactListener_.Clear();
-        physics.UpdateCharacterSteps(timeStep);
-        const auto result = g_joltRuntime.Update(physics.GetPhysicsSystem(), timeStep, collisionSteps);
-        physics.UpdateCharacterContacts();
-        return result;
+        return g_joltRuntime.Step(physics, timeStep, collisionSteps);
     }
 
     void RJ_OptimizeBroadPhase(PhysicsWorld& physics) {

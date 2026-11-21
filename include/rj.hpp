@@ -41,9 +41,9 @@ struct RfbxModel;
 
 namespace RayJolt{
 	inline static constexpr int  RAYJOLT_VERSION_MAJOR = 0;
-	inline static constexpr int  RAYJOLT_VERSION_MINOR = 3;
+	inline static constexpr int  RAYJOLT_VERSION_MINOR = 4;
 	inline static constexpr int  RAYJOLT_VERSION_PATCH = 0;
-	inline constexpr const char* RAYJOLT_VERSION = "0.3.0";
+	inline constexpr const char* RAYJOLT_VERSION = "0.4.0";
 	inline constexpr float		 timeStep = 1.0f / 60.0f;
 
 	namespace ObjectLayers
@@ -473,6 +473,8 @@ namespace RayJolt{
 
 
 	//raw initialize jolt.
+	class PhysicsWorld;
+
 	class JoltRuntime {
 	public:
 		JoltRuntime() = default;
@@ -480,24 +482,22 @@ namespace RayJolt{
 
 		bool Init();
 		void End();
+		std::unique_ptr<PhysicsWorld> CreateWorld();
+		JPH::EPhysicsUpdateError Step(PhysicsWorld& world, float deltaTime, int collisionSteps = 1);
 		JPH::EPhysicsUpdateError Update(JPH::PhysicsSystem& physics, float timeStep, int collisionSteps);
 
 		//Advanced Api.
 
-		const std::unique_ptr<JPH::JobSystemThreadPool>& GetJobSystem()const {
-			return jobSystem_;
-		}
-
-		const std::unique_ptr<JPH::TempAllocatorImpl>& GetTempAllocator()const {
-			return tempAllocator_;
-		}
+		const std::unique_ptr<JPH::JobSystemThreadPool>& GetJobSystem() const;
+		const std::unique_ptr<JPH::TempAllocatorImpl>& GetTempAllocator() const;
 
 		JoltRuntime(const JoltRuntime&) = delete;
 		JoltRuntime& operator=(const JoltRuntime&) = delete;
 	private:
-		bool isInitialized = false;
-		std::unique_ptr<JPH::JobSystemThreadPool> jobSystem_ = nullptr;
-		std::unique_ptr<JPH::TempAllocatorImpl> tempAllocator_ = nullptr;
+		friend class PhysicsWorld;
+		struct State;
+		std::shared_ptr<State> state_;
+		static std::weak_ptr<State> activeState_;
 	};
 
 
@@ -597,10 +597,12 @@ namespace RayJolt{
 
 
 	private:
+		friend class JoltRuntime;
 		friend class RayJoltContext;
 		friend JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld&, float, int);
 		BodyHandle RegisterBody(JPH::BodyID id);
 		BodyHandle FindBodyHandle(JPH::BodyID id) const;
+		std::shared_ptr<JoltRuntime::State> runtimeState_;
 		const std::uint64_t worldId_;
 		std::uint64_t nextBodyGeneration_ = 1;
 		std::unordered_map<std::uint32_t, std::uint64_t> bodyGenerations_;

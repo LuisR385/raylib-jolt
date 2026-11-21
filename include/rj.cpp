@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <cmath>
 #include <limits>
+#include <atomic>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/NarrowPhaseQuery.h>
 #include <Jolt/Physics/Collision/ShapeCast.h>
@@ -17,6 +18,34 @@
 static RayJolt::JoltRuntime g_joltRuntime;
 
 namespace RayJolt {
+
+    namespace {
+        std::uint64_t NextWorldId() {
+            static std::atomic<std::uint64_t> next{1};
+            auto id = next.load(std::memory_order_relaxed);
+            do {
+                if (id == std::numeric_limits<std::uint64_t>::max())
+                    throw std::overflow_error("World identifiers exhausted");
+            } while (!next.compare_exchange_weak(id, id + 1, std::memory_order_relaxed));
+            return id;
+        }
+    }
+
+    PhysicsWorld::PhysicsWorld() : worldId_(NextWorldId()) {}
+
+    BodyHandle PhysicsWorld::RegisterBody(JPH::BodyID id) {
+        if (id.IsInvalid())
+            return {};
+        if (nextBodyGeneration_ == std::numeric_limits<std::uint64_t>::max())
+            throw std::overflow_error("Body generations exhausted");
+        bodyGenerations_[id.GetIndexAndSequenceNumber()] = nextBodyGeneration_++;
+        return FindBodyHandle(id);
+    }
+
+    BodyHandle PhysicsWorld::FindBodyHandle(JPH::BodyID id) const {
+        const auto found = bodyGenerations_.find(id.GetIndexAndSequenceNumber());
+        return found == bodyGenerations_.end() ? BodyHandle{} : BodyHandle(id, worldId_, found->second);
+    }
 
     MeshValidationResult ValidateTriangleMesh(const TriangleMeshData& mesh) {
         //triangle size small size guard.
@@ -181,8 +210,10 @@ namespace RayJolt {
         const JPH::Body& b, const JPH::ContactManifold& manifold) {
         ContactEvent event;
         event.type = type;
-        event.bodyA = BodyHandle(a.GetID());
-        event.bodyB = BodyHandle(b.GetID());
+        event.bodyA = world_.FindBodyHandle(a.GetID());
+        event.bodyB = world_.FindBodyHandle(b.GetID());
+        if (!event.bodyA.IsValid() || !event.bodyB.IsValid())
+            return;
         event.subShapeA = manifold.mSubShapeID1.GetValue();
         event.subShapeB = manifold.mSubShapeID2.GetValue();
         event.normal = Detail::ToRaylibVector3(manifold.mWorldSpaceNormal);
@@ -191,6 +222,8 @@ namespace RayJolt {
             event.hasContactPoint = true;
         }
         std::lock_guard<std::mutex> lock(mutex_);
+        contacts_[JPH::SubShapeIDPair(a.GetID(), manifold.mSubShapeID1, b.GetID(), manifold.mSubShapeID2)] =
+            {event.bodyA, event.bodyB};
         events_.push_back(event);
     }
 
@@ -205,19 +238,29 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::ContactEventListener::OnContactRemoved(const JPH::SubShapeIDPair& pair) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto found = contacts_.find(pair);
+        if (found == contacts_.end())
+            return;
         ContactEvent event;
         event.type = ContactEventType::End;
-        event.bodyA = BodyHandle(pair.GetBody1ID());
-        event.bodyB = BodyHandle(pair.GetBody2ID());
+        event.bodyA = found->second.first;
+        event.bodyB = found->second.second;
         event.subShapeA = pair.GetSubShapeID1().GetValue();
         event.subShapeB = pair.GetSubShapeID2().GetValue();
-        std::lock_guard<std::mutex> lock(mutex_);
+        contacts_.erase(found);
         events_.push_back(event);
     }
 
     void PhysicsWorld::ContactEventListener::Clear() {
         std::lock_guard<std::mutex> lock(mutex_);
         events_.clear();
+    }
+
+    void PhysicsWorld::ContactEventListener::Reset() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        events_.clear();
+        contacts_.clear();
     }
 
     std::vector<ContactEvent> PhysicsWorld::ContactEventListener::GetEvents() const {
@@ -242,6 +285,8 @@ namespace RayJolt {
 
     bool PhysicsWorld::Init()
     {
+        if (initialized_)
+            return true;
         layerPairs_.EnableCollision(ObjectLayers::NON_MOVING, ObjectLayers::MOVING);
         layerPairs_.EnableCollision(ObjectLayers::MOVING, ObjectLayers::MOVING);
         broadPhaseLayers_.MapObjectToBroadPhaseLayer(ObjectLayers::NON_MOVING, BroadPhaseLayers::NON_MOVING);
@@ -251,6 +296,7 @@ namespace RayJolt {
 
         physicsSystem_.Init(1024, 0, 1024, 1024, broadPhaseLayers_, *broadPhaseFilter_, layerPairs_);
         physicsSystem_.SetContactListener(&contactListener_);
+        initialized_ = true;
 
         return true;
     }
@@ -260,6 +306,8 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::Shutdown() {
+        if (!initialized_)
+            return;
         for (auto& state : characters_)
             state.character->RemoveFromPhysicsSystem();
         characters_.clear();
@@ -272,7 +320,8 @@ namespace RayJolt {
                 bodies.RemoveBody(id);
             bodies.DestroyBody(id);
         }
-        contactListener_.Clear();
+        bodyGenerations_.clear();
+        contactListener_.Reset();
     }
 
     void PhysicsWorld::SetGravity(Vector3 gravity) {
@@ -358,6 +407,8 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::SetMass(BodyHandle body, float mass) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         if (!std::isfinite(mass) || mass < std::numeric_limits<float>::min())
             throw std::invalid_argument("Mass must be a positive finite normal float");
         {
@@ -377,6 +428,8 @@ namespace RayJolt {
     }
 
     float PhysicsWorld::GetMass(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
         if (!lock.Succeeded())
             throw std::invalid_argument("Body does not exist in this world");
@@ -389,6 +442,8 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::SetLinearDamping(BodyHandle body, float damping) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         if (!std::isfinite(damping) || damping < 0.0f)
             throw std::invalid_argument("Damping must be finite and non-negative");
         {
@@ -406,6 +461,8 @@ namespace RayJolt {
     }
 
     float PhysicsWorld::GetLinearDamping(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
         if (!lock.Succeeded())
             throw std::invalid_argument("Body does not exist in this world");
@@ -415,6 +472,8 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::SetAngularDamping(BodyHandle body, float damping) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         if (!std::isfinite(damping) || damping < 0.0f)
             throw std::invalid_argument("Damping must be finite and non-negative");
         {
@@ -432,6 +491,8 @@ namespace RayJolt {
     }
 
     float PhysicsWorld::GetAngularDamping(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
         if (!lock.Succeeded())
             throw std::invalid_argument("Body does not exist in this world");
@@ -488,11 +549,13 @@ namespace RayJolt {
     }
 
     bool PhysicsWorld::ContainsBody(BodyHandle body) const {
-        if (!body.IsValid())
+        if (!body.IsValid() || body.worldId_ != worldId_)
             return false;
-        JPH::BodyIDVector bodyIDs;
-        physicsSystem_.GetBodies(bodyIDs);
-        return std::find(bodyIDs.begin(), bodyIDs.end(), body.GetJoltID()) != bodyIDs.end();
+        const auto found = bodyGenerations_.find(body.GetJoltID().GetIndexAndSequenceNumber());
+        if (found == bodyGenerations_.end() || found->second != body.generation_)
+            return false;
+        JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
+        return lock.Succeeded();
     }
 
     bool PhysicsWorld::DestroyBody(BodyHandle& body) {
@@ -507,6 +570,7 @@ namespace RayJolt {
                 it->character->RemoveFromPhysicsSystem();
                 characters_.erase(it);
                 jumpingCharacters_.erase(std::remove(jumpingCharacters_.begin(), jumpingCharacters_.end(), id), jumpingCharacters_.end());
+                bodyGenerations_.erase(id.GetIndexAndSequenceNumber());
                 body = BodyHandle{};
                 return true;
             }
@@ -514,6 +578,7 @@ namespace RayJolt {
         if (bodies.IsAdded(id))
             bodies.RemoveBody(id);
         bodies.DestroyBody(id);
+        bodyGenerations_.erase(id.GetIndexAndSequenceNumber());
         body = BodyHandle{};
         return true;
     }
@@ -531,7 +596,7 @@ namespace RayJolt {
         settings.mIsSensor = desc.isSensor;
         settings.mRestitution = desc.restitution;
         settings.mFriction = desc.friction;
-        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
+        return RegisterBody(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
             desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
     }
 
@@ -557,7 +622,7 @@ namespace RayJolt {
         settings.mIsSensor = desc.isSensor;
         settings.mRestitution = desc.restitution;
         settings.mFriction = desc.friction;
-        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
+        return RegisterBody(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
             desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
     }
 
@@ -613,6 +678,8 @@ namespace RayJolt {
     }
 
     BoundingBox PhysicsWorld::GetBoundingBox(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), body.GetJoltID());
         if (!lock.Succeeded())
             throw std::invalid_argument("Body does not exist in this world");
@@ -724,7 +791,7 @@ namespace RayJolt {
             desc.height, crouchingHeight, desc.radius});
         characters_.back().maxStepHeight = desc.maxStepHeight;
         character->AddToPhysicsSystem();
-        return BodyHandle(character->GetBodyID());
+        return RegisterBody(character->GetBodyID());
     }
 
     bool PhysicsWorld::IsGrounded(BodyHandle body) const {
@@ -732,6 +799,8 @@ namespace RayJolt {
     }
 
     CharacterGroundInfo PhysicsWorld::GetCharacterGroundInfo(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         for (const auto& state : characters_) {
             const auto& character = state.character;
             if (character->GetBodyID() != body.GetJoltID())
@@ -750,7 +819,7 @@ namespace RayJolt {
             case JPH::CharacterBase::EGroundState::InAir:
                 return info;
             }
-            info.body = BodyHandle(character->GetGroundBodyID());
+            info.body = FindBodyHandle(character->GetGroundBodyID());
             if (!ContainsBody(info.body))
                 return CharacterGroundInfo{};
             info.position = Detail::ToRaylibRVector3(character->GetGroundPosition());
@@ -762,6 +831,8 @@ namespace RayJolt {
     }
 
     void PhysicsWorld::MoveCharacter(BodyHandle body, Vector2 direction, float speed) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         for (auto& state : characters_) {
             auto& character = state.character;
             if (character->GetBodyID() != body.GetJoltID())
@@ -803,6 +874,8 @@ namespace RayJolt {
     }
 
     bool PhysicsWorld::SetCrouching(BodyHandle body, bool crouching) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         for (auto& state : characters_) {
             if (state.character->GetBodyID() != body.GetJoltID())
                 continue;
@@ -828,6 +901,8 @@ namespace RayJolt {
     }
 
     bool PhysicsWorld::IsCrouching(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         for (const auto& state : characters_)
             if (state.character->GetBodyID() == body.GetJoltID())
                 return state.crouching;
@@ -835,6 +910,8 @@ namespace RayJolt {
     }
 
     float PhysicsWorld::GetCharacterHeight(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         for (const auto& state : characters_)
             if (state.character->GetBodyID() == body.GetJoltID())
                 return state.crouching ? state.crouchingHeight : state.standingHeight;
@@ -842,6 +919,8 @@ namespace RayJolt {
     }
 
     bool PhysicsWorld::Jump(BodyHandle body, float speed) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
         for (auto& state : characters_) {
             auto& character = state.character;
             if (character->GetBodyID() != body.GetJoltID())
@@ -947,6 +1026,8 @@ namespace RayJolt {
 
     bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, RayHit& hit, BodyHandle ignoreBody) const {
         hit = {};
+        if (ignoreBody != BodyHandle{} && !ContainsBody(ignoreBody))
+            return false;
         if (!std::isfinite(maxDistance) || maxDistance <= 0.0f ||
             !std::isfinite(ray.position.x) || !std::isfinite(ray.position.y) ||
             !std::isfinite(ray.position.z) || !std::isfinite(ray.direction.x) ||
@@ -970,7 +1051,9 @@ namespace RayJolt {
         if (!lock.Succeeded())
             return false;
         const auto point = joltRay.GetPointOnRay(result.mFraction);
-        hit.body = BodyHandle(result.mBodyID);
+        hit.body = FindBodyHandle(result.mBodyID);
+        if (!hit.body.IsValid())
+            return false;
         hit.point = Detail::ToRaylibRVector3(point);
         hit.normal = Detail::ToRaylibVector3(
             lock.GetBody().GetWorldSpaceSurfaceNormal(result.mSubShapeID2, point));
@@ -1021,7 +1104,7 @@ namespace RayJolt {
         settings.mFriction = desc.friction;
         settings.mIsSensor = desc.isSensor;
         settings.mRestitution = desc.restitution;
-        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
+        return RegisterBody(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
             desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
     }
 
@@ -1114,7 +1197,7 @@ namespace RayJolt {
         settings.mFriction = desc.friction;
         settings.mRestitution = desc.restitution;
         settings.mIsSensor = desc.isSensor;
-        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
+        return RegisterBody(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings,
             desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate));
     }
 
@@ -1185,7 +1268,7 @@ namespace RayJolt {
         JPH::BodyCreationSettings settings(shape.Get().GetPtr(), Detail::ToJoltRVec3(desc.position),
             rotation, JPH::EMotionType::Static, ObjectLayers::NON_MOVING);
         settings.mIsSensor = desc.isSensor;
-        return BodyHandle(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings, JPH::EActivation::DontActivate));
+        return RegisterBody(physicsSystem_.GetBodyInterface().CreateAndAddBody(settings, JPH::EActivation::DontActivate));
     }
 
     BodyHandle PhysicsWorld::CreateBox(const BoxDesc& desc) {
@@ -1212,7 +1295,7 @@ namespace RayJolt {
         JPH::EActivation activation = desc.motionType == MotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate;
 
         JPH::BodyID jphId = physicsSystem_.GetBodyInterface().CreateAndAddBody(settings, activation);
-        return BodyHandle(jphId);
+        return RegisterBody(jphId);
     }
 
     //====================End declare Struct/Class INFO====================

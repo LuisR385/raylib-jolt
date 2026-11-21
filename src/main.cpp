@@ -202,9 +202,9 @@ int main(int argc, char** argv)
                 return 1;
             const Vector3 rampNormal = Vector3RotateByQuaternion({0, 1, 0}, rampSettings.rotation);
             if (!check(physics.CastRay({Vector3Add(rampSettings.position, Vector3Scale(rampNormal, 2)),
-                Vector3Negate(rampNormal)}, 4, hit) && hit.body.GetJoltID() == ramp.GetJoltID(), "ramp ray") ||
+                Vector3Negate(rampNormal)}, 4, hit) && hit.body == ramp, "ramp ray") ||
                 !check(physics.CastRay({{4, 1, -1}, {0, 0, -1}}, 4, hit) &&
-                    hit.body.GetJoltID() == wall.GetJoltID(), "wall ray"))
+                    hit.body == wall, "wall ray"))
                 return 1;
             resetPlayer({platformSettings.position.x, platformSettings.position.y + 1.12f, platformSettings.position.z});
             for (int step = 0; step < 60; ++step)
@@ -216,7 +216,7 @@ int main(int argc, char** argv)
                 physics.MoveCharacter(player, {});
                 context.Step(RJ::timeStep);
             }
-            if (!check(physics.GetCharacterGroundInfo(player).body.GetJoltID() == platform.GetJoltID() &&
+            if (!check(physics.GetCharacterGroundInfo(player).body == platform &&
                 std::abs(physics.GetPosition(player).x - physics.GetPosition(platform).x) < 0.15f, "platform follow"))
                 return 1;
             TraceLog(LOG_INFO, "Stage smoke test passed");
@@ -416,7 +416,7 @@ int main(int argc, char** argv)
                 contactBegins = contactStays = contactEnds = 0;
                 sensorEvents = 0;
                 for (const auto& event : physics.GetContactEvents()) {
-                    if (event.bodyA.GetJoltID() == sensor.GetJoltID() || event.bodyB.GetJoltID() == sensor.GetJoltID())
+                    if (event.bodyA == sensor || event.bodyB == sensor)
                         ++sensorEvents;
                     switch (event.type) {
                     case RJ::ContactEventType::Begin: ++contactBegins; break;

@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <string>
 #include <mutex>
+#include <unordered_map>
 
 #ifdef RJ_WITH_RFBX
 struct RfbxModel;
@@ -40,9 +41,9 @@ struct RfbxModel;
 
 namespace RayJolt{
 	inline static constexpr int  RAYJOLT_VERSION_MAJOR = 0;
-	inline static constexpr int  RAYJOLT_VERSION_MINOR = 2;
+	inline static constexpr int  RAYJOLT_VERSION_MINOR = 3;
 	inline static constexpr int  RAYJOLT_VERSION_PATCH = 0;
-	inline constexpr const char* RAYJOLT_VERSION = "0.2.0";
+	inline constexpr const char* RAYJOLT_VERSION = "0.3.0";
 	inline constexpr float		 timeStep = 1.0f / 60.0f;
 
 	namespace ObjectLayers
@@ -406,16 +407,24 @@ namespace RayJolt{
 	struct BodyHandle {
 	public:
 		BodyHandle() = default;
-		explicit BodyHandle(JPH::BodyID jphId) : jphId_(jphId) {}
 
-		bool IsValid() const { return !jphId_.IsInvalid(); }
+		bool IsValid() const { return worldId_ != 0 && generation_ != 0 && !jphId_.IsInvalid(); }
+		bool operator==(const BodyHandle& other) const {
+			return worldId_ == other.worldId_ && generation_ == other.generation_ && jphId_ == other.jphId_;
+		}
+		bool operator!=(const BodyHandle& other) const { return !(*this == other); }
 
 		// 内部処理用（ユーザーには直接触らせない）
 		// NOTE : Only internal processing. dont use it now.
 		JPH::BodyID GetJoltID() const { return jphId_; }
 
 	private:
+		friend class PhysicsWorld;
+		BodyHandle(JPH::BodyID id, std::uint64_t worldId, std::uint64_t generation)
+			: jphId_(id), worldId_(worldId), generation_(generation) {}
 		JPH::BodyID jphId_;
+		std::uint64_t worldId_ = 0;
+		std::uint64_t generation_ = 0;
 	};
 
 
@@ -496,7 +505,10 @@ namespace RayJolt{
 
 	class PhysicsWorld {
 	public:
+		PhysicsWorld();
 		~PhysicsWorld();
+		PhysicsWorld(const PhysicsWorld&) = delete;
+		PhysicsWorld& operator=(const PhysicsWorld&) = delete;
 
 		bool Init();
 		void Update(float deltaTime,int collisionStep = 1);
@@ -587,6 +599,12 @@ namespace RayJolt{
 	private:
 		friend class RayJoltContext;
 		friend JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld&, float, int);
+		BodyHandle RegisterBody(JPH::BodyID id);
+		BodyHandle FindBodyHandle(JPH::BodyID id) const;
+		const std::uint64_t worldId_;
+		std::uint64_t nextBodyGeneration_ = 1;
+		std::unordered_map<std::uint32_t, std::uint64_t> bodyGenerations_;
+		bool initialized_ = false;
 		void UpdateCharacterContacts();
 		void UpdateCharacterSteps(float deltaTime);
 		struct CharacterState {
@@ -605,20 +623,24 @@ namespace RayJolt{
 		std::vector<JPH::BodyID> jumpingCharacters_;
 		class ContactEventListener final : public JPH::ContactListener {
 		public:
+			explicit ContactEventListener(PhysicsWorld& world) : world_(world) {}
 			void OnContactAdded(const JPH::Body& a, const JPH::Body& b,
 				const JPH::ContactManifold& manifold, JPH::ContactSettings&) override;
 			void OnContactPersisted(const JPH::Body& a, const JPH::Body& b,
 				const JPH::ContactManifold& manifold, JPH::ContactSettings&) override;
 			void OnContactRemoved(const JPH::SubShapeIDPair& pair) override;
 			void Clear();
+			void Reset();
 			std::vector<ContactEvent> GetEvents() const;
 		private:
 			void Record(ContactEventType type, const JPH::Body& a, const JPH::Body& b,
 				const JPH::ContactManifold& manifold);
 			mutable std::mutex mutex_;
 			std::vector<ContactEvent> events_;
+			PhysicsWorld& world_;
+			std::unordered_map<JPH::SubShapeIDPair, std::pair<BodyHandle, BodyHandle>> contacts_;
 		};
-		ContactEventListener contactListener_;
+		ContactEventListener contactListener_{*this};
 		JPH::ObjectLayerPairFilterTable layerPairs_{2};
 		JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers_{2, 2};
 		std::unique_ptr<JPH::ObjectVsBroadPhaseLayerFilterTable> broadPhaseFilter_;

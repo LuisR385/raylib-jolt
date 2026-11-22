@@ -140,6 +140,12 @@ int main(int argc, char** argv)
         const auto sensor = physics.CreateBox(sensorSettings);
         if (!sensor.IsValid())
             return 1;
+        constexpr std::uint64_t sensorEntityId = 4;
+        physics.SetUserData(ball, 1);
+        physics.SetUserData(capsule, 2);
+        physics.SetUserData(player, 3);
+        physics.SetUserData(sensor, sensorEntityId);
+        physics.SetUserData(platform, 7);
 
         RJ::CompoundPart compoundBase;
         compoundBase.size = {3.0f, 0.4f, 1.0f};
@@ -154,6 +160,7 @@ int main(int argc, char** argv)
         auto compound = physics.CreateCompound(compoundParts, compoundSettings);
         if (!compound.IsValid())
             return 1;
+        physics.SetUserData(compound, 5);
 
         std::vector<RJ::RagdollPartDesc> ragdollParts(6);
         ragdollParts[0].shape.size = {0.5f, 0.7f, 0.3f};
@@ -187,6 +194,8 @@ int main(int argc, char** argv)
         if (!ragdoll.IsValid())
             return 1;
         auto ragdollBodies = physics.GetRagdollBodies(ragdoll);
+        for (auto body : ragdollBodies)
+            physics.SetUserData(body, 6);
 
         const auto resetPlayer = [&](Vector3 position) {
             physics.SetPosition(player, {0.0f, 20.0f, 0.0f});
@@ -355,6 +364,7 @@ int main(int argc, char** argv)
         int sensorEvents = 0;
         const char* currentArea = "Flat ground";
         bool showPhysicsDebug = false;
+        std::vector<RJ::BodyHandle> nearbyBodies;
         while (!WindowShouldClose())
         {
             if (IsKeyPressed(KEY_F1))
@@ -392,6 +402,8 @@ int main(int argc, char** argv)
                 physics.DestroyRagdoll(ragdoll);
                 ragdoll = physics.CreateRagdoll(ragdollParts, ragdollSettings);
                 ragdollBodies = physics.GetRagdollBodies(ragdoll);
+                for (auto body : ragdollBodies)
+                    physics.SetUserData(body, 6);
                 resetPlayer(characterSettings.position);
                 currentArea = "Flat ground";
                 physics.SetGravity({0.0f, -9.81f, 0.0f});
@@ -506,7 +518,7 @@ int main(int argc, char** argv)
                 contactBegins = contactStays = contactEnds = 0;
                 sensorEvents = 0;
                 for (const auto& event : physics.GetContactEvents()) {
-                    if (event.bodyA == sensor || event.bodyB == sensor)
+                    if (event.userDataA == sensorEntityId || event.userDataB == sensorEntityId)
                         ++sensorEvents;
                     switch (event.type) {
                     case RJ::ContactEventType::Begin: ++contactBegins; break;
@@ -551,6 +563,9 @@ int main(int argc, char** argv)
             footFilter.sensors = false;
             footFilter.ignoreBodies = {player};
             const bool hitBelowPlayer = physics.CastRay(footRay, 5.0f, footFilter, footHit);
+            nearbyBodies.clear();
+            if (showDebugControls || showPhysicsDebug)
+                physics.OverlapSphere(playerPosition, 3.0f, nearbyBodies, mouseFilter);
 
             BeginDrawing();
             ClearBackground(RAYWHITE);
@@ -626,6 +641,9 @@ int main(int argc, char** argv)
                 RJ::DebugDrawSettings settings;
                 settings.contacts = true;
                 physics.DrawDebug(settings);
+                DrawSphereWires(playerPosition, 3.0f, 12, 12, GOLD);
+                for (auto body : nearbyBodies)
+                    DrawBoundingBox(physics.GetBoundingBox(body), GOLD);
             }
             EndMode3D();
             DrawRectangle(12, 12, 750, 196, Fade(RAYWHITE, 0.9f));
@@ -640,7 +658,7 @@ int main(int argc, char** argv)
                 contactBegins, contactStays, contactEnds, sensorEvents), 20, 180, 18, DARKGRAY);
             DrawFPS(GetScreenWidth() - 100, 20);
             if (showDebugControls) {
-                DrawRectangle(12, 214, 750, 300, Fade(RAYWHITE, 0.9f));
+                DrawRectangle(12, 214, 750, 348, Fade(RAYWHITE, 0.9f));
                 DrawText("SPACE: ball impulse   Hold F: ball force", 20, 226, 18, DARKGRAY);
                 DrawText("Left click: impulse at hit point", 20, 250, 18, DARKGRAY);
                 DrawText(TextFormat("Character: %s   Max slope: %.0f degrees",
@@ -657,6 +675,9 @@ int main(int argc, char** argv)
                 DrawText(TextFormat("V: toggle CCD (%s)   L: fast drop",
                     physics.IsContinuousCollisionEnabled(ball) ? "On" : "Off"), 20, 466, 18, DARKGRAY);
                 DrawText("K: ragdoll impulse", 20, 490, 18, DARKGRAY);
+                DrawText(TextFormat("Nearby dynamics (3m): %d", int(nearbyBodies.size())), 20, 514, 18, DARKGRAY);
+                DrawText(TextFormat("Selected entity ID: %llu", static_cast<unsigned long long>(
+                    hitBody ? physics.GetUserData(mouseHit.body) : 0)), 20, 538, 18, DARKGRAY);
             }
             EndDrawing();
         }

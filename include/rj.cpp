@@ -344,6 +344,8 @@ namespace RayJolt {
         event.type = type;
         event.bodyA = world_.FindBodyHandle(a.GetID());
         event.bodyB = world_.FindBodyHandle(b.GetID());
+        event.userDataA = a.GetUserData();
+        event.userDataB = b.GetUserData();
         if (!event.bodyA.IsValid() || !event.bodyB.IsValid())
             return;
         event.subShapeA = manifold.mSubShapeID1.GetValue();
@@ -355,7 +357,7 @@ namespace RayJolt {
         }
         std::lock_guard<std::mutex> lock(mutex_);
         contacts_[JPH::SubShapeIDPair(a.GetID(), manifold.mSubShapeID1, b.GetID(), manifold.mSubShapeID2)] =
-            {event.bodyA, event.bodyB};
+            {event.bodyA, event.bodyB, event.userDataA, event.userDataB};
         events_.push_back(event);
     }
 
@@ -376,8 +378,10 @@ namespace RayJolt {
             return;
         ContactEvent event;
         event.type = ContactEventType::End;
-        event.bodyA = found->second.first;
-        event.bodyB = found->second.second;
+        event.bodyA = found->second.bodyA;
+        event.bodyB = found->second.bodyB;
+        event.userDataA = found->second.userDataA;
+        event.userDataB = found->second.userDataB;
         event.subShapeA = pair.GetSubShapeID1().GetValue();
         event.subShapeB = pair.GetSubShapeID2().GetValue();
         contacts_.erase(found);
@@ -1218,11 +1222,125 @@ namespace RayJolt {
         }
     }
 
+    bool PhysicsWorld::IsQueryFilterValid(const QueryFilter& filter) const {
+        for (auto body : filter.ignoreBodies)
+            if (!ContainsBody(body))
+                return false;
+        return true;
+    }
+
+    bool PhysicsWorld::QueryBodyFilter::ShouldCollide(const JPH::BodyID& id) const {
+        const auto handle = world_.FindBodyHandle(id);
+        if (!handle.IsValid() || std::find(filter_.ignoreBodies.begin(), filter_.ignoreBodies.end(), handle) != filter_.ignoreBodies.end())
+            return false;
+        const auto found = world_.queryCategories_.find(id.GetIndexAndSequenceNumber());
+        const auto category = found == world_.queryCategories_.end() ? 1u : found->second;
+        return (category & filter_.categoryMask) != 0;
+    }
+
+    bool PhysicsWorld::QueryBodyFilter::ShouldCollideLocked(const JPH::Body& body) const {
+        if (body.IsSensor() && !filter_.sensors)
+            return false;
+        return body.IsStatic() ? filter_.staticBodies : body.IsKinematic() ? filter_.kinematicBodies : filter_.dynamicBodies;
+    }
+
+    bool PhysicsWorld::OverlapShape(const JPH::Shape& shape, Vector3 center, Quaternion rotation,
+        std::vector<BodyHandle>& bodies, const QueryFilter& filter) const {
+        bodies.clear();
+        if (!IsQueryFilterValid(filter) || !std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z))
+            return false;
+        const double length = std::sqrt(double(rotation.x) * rotation.x + double(rotation.y) * rotation.y +
+            double(rotation.z) * rotation.z + double(rotation.w) * rotation.w);
+        if (!std::isfinite(length) || length == 0)
+            return false;
+        const JPH::Quat q(float(rotation.x / length), float(rotation.y / length), float(rotation.z / length), float(rotation.w / length));
+        const auto offset = Detail::ToJoltRVec3(center);
+        JPH::AllHitCollisionCollector<JPH::CollideShapeCollector> collector;
+        const QueryBodyFilter bodyFilter(*this, filter);
+        physicsSystem_.GetNarrowPhaseQuery().CollideShape(&shape, JPH::Vec3::sReplicate(1),
+            JPH::RMat44::sRotationTranslation(q, offset), {}, offset, collector, {}, {}, bodyFilter);
+        for (const auto& hit : collector.mHits) {
+            const auto body = FindBodyHandle(hit.mBodyID2);
+            if (body.IsValid())
+                bodies.push_back(body);
+        }
+        std::sort(bodies.begin(), bodies.end(), [](BodyHandle a, BodyHandle b) { return a.GetJoltID() < b.GetJoltID(); });
+        bodies.erase(std::unique(bodies.begin(), bodies.end()), bodies.end());
+        return !bodies.empty();
+    }
+
+    bool PhysicsWorld::OverlapSphere(Vector3 center, float radius, std::vector<BodyHandle>& bodies, const QueryFilter& filter) const {
+        bodies.clear();
+        if (!std::isfinite(radius) || radius <= 0)
+            return false;
+        const JPH::SphereShape shape(radius);
+        return OverlapShape(shape, center, {0, 0, 0, 1}, bodies, filter);
+    }
+
+    bool PhysicsWorld::OverlapBox(Vector3 center, Vector3 size, std::vector<BodyHandle>& bodies, const QueryFilter& filter) const {
+        return OverlapBox(center, size, {0, 0, 0, 1}, bodies, filter);
+    }
+
+    bool PhysicsWorld::OverlapBox(Vector3 center, Vector3 size, Quaternion rotation,
+        std::vector<BodyHandle>& bodies, const QueryFilter& filter) const {
+        bodies.clear();
+        if (!std::isfinite(size.x) || !std::isfinite(size.y) || !std::isfinite(size.z) ||
+            size.x * 0.5f <= 0 || size.y * 0.5f <= 0 || size.z * 0.5f <= 0)
+            return false;
+        const JPH::BoxShape shape(Detail::ToJoltVec3(size) * 0.5f);
+        return OverlapShape(shape, center, rotation, bodies, filter);
+    }
+
+    bool PhysicsWorld::CastSphere(const Ray& ray, float radius, float maxDistance, RayHit& hit, const QueryFilter& filter) const {
+        hit = {};
+        if (!IsQueryFilterValid(filter) || !std::isfinite(radius) || radius <= 0 ||
+            !std::isfinite(maxDistance) || maxDistance <= 0 ||
+            !std::isfinite(ray.position.x) || !std::isfinite(ray.position.y) || !std::isfinite(ray.position.z) ||
+            !std::isfinite(ray.direction.x) || !std::isfinite(ray.direction.y) || !std::isfinite(ray.direction.z))
+            return false;
+        const double length = std::hypot(double(ray.direction.x), double(ray.direction.y), double(ray.direction.z));
+        if (length == 0)
+            return false;
+        const JPH::Vec3 displacement(float(ray.direction.x / length * maxDistance),
+            float(ray.direction.y / length * maxDistance), float(ray.direction.z / length * maxDistance));
+        const auto offset = Detail::ToJoltRVec3(ray.position);
+        const JPH::SphereShape shape(radius);
+        const JPH::RShapeCast cast(&shape, JPH::Vec3::sReplicate(1), JPH::RMat44::sTranslation(offset), displacement);
+        JPH::ShapeCastSettings settings;
+        settings.mReturnDeepestPoint = true;
+        settings.mBackFaceModeConvex = JPH::EBackFaceMode::CollideWithBackFaces;
+        JPH::ClosestHitCollisionCollector<JPH::CastShapeCollector> collector;
+        const QueryBodyFilter bodyFilter(*this, filter);
+        physicsSystem_.GetNarrowPhaseQuery().CastShape(cast, settings, offset, collector, {}, {}, bodyFilter);
+        if (!collector.HadHit())
+            return false;
+        hit.body = FindBodyHandle(collector.mHit.mBodyID2);
+        if (!hit.body.IsValid())
+            return false;
+        hit.point = Detail::ToRaylibRVector3(offset + collector.mHit.mContactPointOn2);
+        const JPH::Vec3 direction(float(ray.direction.x / length), float(ray.direction.y / length), float(ray.direction.z / length));
+        hit.normal = Detail::ToRaylibVector3(-collector.mHit.mPenetrationAxis.NormalizedOr(direction));
+        hit.distance = collector.mHit.mFraction * maxDistance;
+        return true;
+    }
+
     bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, RayHit& hit, BodyHandle ignoreBody) const {
         QueryFilter filter;
         if (ignoreBody != BodyHandle{})
             filter.ignoreBodies.push_back(ignoreBody);
         return CastRay(ray, maxDistance, filter, hit);
+    }
+
+    void PhysicsWorld::SetUserData(BodyHandle body, std::uint64_t value) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        physicsSystem_.GetBodyInterface().SetUserData(body.GetJoltID(), value);
+    }
+
+    std::uint64_t PhysicsWorld::GetUserData(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        return physicsSystem_.GetBodyInterface().GetUserData(body.GetJoltID());
     }
 
     void PhysicsWorld::SetQueryCategory(BodyHandle body, std::uint32_t category) {
@@ -1240,9 +1358,8 @@ namespace RayJolt {
 
     bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, const QueryFilter& filter, RayHit& hit) const {
         hit = {};
-        for (auto body : filter.ignoreBodies)
-            if (!ContainsBody(body))
-                return false;
+        if (!IsQueryFilterValid(filter))
+            return false;
         if (!std::isfinite(maxDistance) || maxDistance <= 0.0f ||
             !std::isfinite(ray.position.x) || !std::isfinite(ray.position.y) ||
             !std::isfinite(ray.position.z) || !std::isfinite(ray.direction.x) ||
@@ -1258,26 +1375,7 @@ namespace RayJolt {
             float(ray.direction.z / length * maxDistance));
         const JPH::RRayCast joltRay(Detail::ToJoltRVec3(ray.position), displacement);
         JPH::RayCastResult result;
-        class Filter final : public JPH::BodyFilter {
-        public:
-            Filter(const PhysicsWorld& world, const QueryFilter& filter) : world_(world), filter_(filter) {}
-            bool ShouldCollide(const JPH::BodyID& id) const override {
-                const auto handle = world_.FindBodyHandle(id);
-                if (!handle.IsValid() || std::find(filter_.ignoreBodies.begin(), filter_.ignoreBodies.end(), handle) != filter_.ignoreBodies.end())
-                    return false;
-                const auto found = world_.queryCategories_.find(id.GetIndexAndSequenceNumber());
-                const auto category = found == world_.queryCategories_.end() ? 1u : found->second;
-                return (category & filter_.categoryMask) != 0;
-            }
-            bool ShouldCollideLocked(const JPH::Body& body) const override {
-                if (body.IsSensor() && !filter_.sensors)
-                    return false;
-                return body.IsStatic() ? filter_.staticBodies : body.IsKinematic() ? filter_.kinematicBodies : filter_.dynamicBodies;
-            }
-        private:
-            const PhysicsWorld& world_;
-            const QueryFilter& filter_;
-        } bodyFilter(*this, filter);
+        const QueryBodyFilter bodyFilter(*this, filter);
         if (!physicsSystem_.GetNarrowPhaseQuery().CastRay(joltRay, result, {}, {}, bodyFilter))
             return false;
 

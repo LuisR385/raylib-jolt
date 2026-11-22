@@ -495,6 +495,8 @@ namespace RayJolt{
 		Vector3 point = {};
 		Vector3 normal = {};
 		bool hasContactPoint = false;
+		std::uint64_t userDataA = 0;
+		std::uint64_t userDataB = 0;
 	};
 
 	enum class GroundState {
@@ -659,8 +661,15 @@ namespace RayJolt{
 		void AddAngularImpulse(BodyHandle body, Vector3 impulse);
 		bool CastRay(const Ray& ray, float maxDistance, RayHit& hit, BodyHandle ignoreBody = {}) const;
 		bool CastRay(const Ray& ray, float maxDistance, const QueryFilter& filter, RayHit& hit) const;
+		bool OverlapSphere(Vector3 center, float radius, std::vector<BodyHandle>& bodies, const QueryFilter& filter = {}) const;
+		bool OverlapBox(Vector3 center, Vector3 size, std::vector<BodyHandle>& bodies, const QueryFilter& filter = {}) const;
+		bool OverlapBox(Vector3 center, Vector3 size, Quaternion rotation, std::vector<BodyHandle>& bodies,
+			const QueryFilter& filter = {}) const;
+		bool CastSphere(const Ray& ray, float radius, float maxDistance, RayHit& hit, const QueryFilter& filter = {}) const;
 		void SetQueryCategory(BodyHandle body, std::uint32_t category);
 		std::uint32_t GetQueryCategory(BodyHandle body) const;
+		void SetUserData(BodyHandle body, std::uint64_t value);
+		std::uint64_t GetUserData(BodyHandle body) const;
 		bool ContainsBody(BodyHandle body) const;
 		bool DestroyBody(BodyHandle& body);
 
@@ -689,6 +698,18 @@ namespace RayJolt{
 		friend class JoltRuntime;
 		friend class RayJoltContext;
 		friend JPH::EPhysicsUpdateError RJ_Update(PhysicsWorld&, float, int);
+		class QueryBodyFilter final : public JPH::BodyFilter {
+		public:
+			QueryBodyFilter(const PhysicsWorld& world, const QueryFilter& filter) : world_(world), filter_(filter) {}
+			bool ShouldCollide(const JPH::BodyID& id) const override;
+			bool ShouldCollideLocked(const JPH::Body& body) const override;
+		private:
+			const PhysicsWorld& world_;
+			const QueryFilter& filter_;
+		};
+		bool IsQueryFilterValid(const QueryFilter& filter) const;
+		bool OverlapShape(const JPH::Shape& shape, Vector3 center, Quaternion rotation,
+			std::vector<BodyHandle>& bodies, const QueryFilter& filter) const;
 		BodyHandle RegisterBody(JPH::BodyID id);
 		BodyHandle FindBodyHandle(JPH::BodyID id) const;
 		std::shared_ptr<JoltRuntime::State> runtimeState_;
@@ -738,7 +759,13 @@ namespace RayJolt{
 			mutable std::mutex mutex_;
 			std::vector<ContactEvent> events_;
 			PhysicsWorld& world_;
-			std::unordered_map<JPH::SubShapeIDPair, std::pair<BodyHandle, BodyHandle>> contacts_;
+			struct ContactBodies {
+				BodyHandle bodyA;
+				BodyHandle bodyB;
+				std::uint64_t userDataA = 0;
+				std::uint64_t userDataB = 0;
+			};
+			std::unordered_map<JPH::SubShapeIDPair, ContactBodies> contacts_;
 		};
 		ContactEventListener contactListener_{*this};
 		JPH::ObjectLayerPairFilterTable layerPairs_{2};

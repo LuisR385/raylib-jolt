@@ -302,23 +302,24 @@ int main(int argc, char** argv)
                     collisionModel = RfbxLoadModel(argv[2]);
                     collisionSource = &collisionModel;
                 }
-                RJ::TriangleMeshData collisionMesh;
-                const auto result = RJ::BuildRfbxCollisionMesh(*collisionSource, collisionMesh,
-                    importedDynamic ? MatrixIdentity() : importedTransform);
-                if (result.valid) {
-                    if (importedDynamic) {
+                if (importedDynamic) {
+                    RJ::TriangleMeshData collisionMesh;
+                    const auto result = RJ::BuildRfbxCollisionMesh(*collisionSource, collisionMesh);
+                    if (result.valid) {
                         RJ::ConvexHullDesc desc;
                         desc.position = {0.0f, 3.0f, 5.0f};
                         desc.mass = 10.0f;
                         importedBody = physics.CreateConvexHull(collisionMesh.vertices, desc);
                     } else {
-                        importedBody = physics.CreateStaticMesh(collisionMesh);
+                        TraceLog(LOG_WARNING, "FBX collision mesh: %s", result.message.c_str());
                     }
-                    if (!importedBody.IsValid())
-                        TraceLog(LOG_WARNING, "Could not create FBX collision body");
                 } else {
-                    TraceLog(LOG_WARNING, "FBX collision mesh: %s", result.message.c_str());
+                    RJ::StaticMeshDesc desc;
+                    desc.position = Vector3Transform({}, importedTransform);
+                    importedBody = physics.CreateStaticBodyFromRfbx(*collisionSource, desc);
                 }
+                if (!importedBody.IsValid())
+                    TraceLog(LOG_WARNING, "Could not create FBX collision body");
                 RfbxUnloadModel(&collisionModel);
             } else {
                 TraceLog(LOG_WARNING, "Could not load FBX render model: %s", argv[1]);
@@ -353,10 +354,13 @@ int main(int argc, char** argv)
         int contactEnds = 0;
         int sensorEvents = 0;
         const char* currentArea = "Flat ground";
+        bool showPhysicsDebug = false;
         while (!WindowShouldClose())
         {
             if (IsKeyPressed(KEY_F1))
                 showDebugControls = !showDebugControls;
+            if (IsKeyPressed(KEY_F2))
+                showPhysicsDebug = !showPhysicsDebug;
             if (IsKeyPressed(KEY_TAB))
                 followCamera = !followCamera;
             const Vector3 checkpoints[] = {
@@ -533,12 +537,20 @@ int main(int argc, char** argv)
             camera.target = followCamera ? playerPosition : Vector3{0.0f, 0.5f, 0.0f};
             camera.position = followCamera ? Vector3Add(playerPosition, {6.0f, 4.0f, 6.0f}) : Vector3{14.0f, 14.0f, 14.0f};
             RJ::RayHit mouseHit;
-            const bool hitBody = physics.CastRay(GetScreenToWorldRay(GetMousePosition(), camera), 100.0f, mouseHit);
+            RJ::QueryFilter mouseFilter;
+            mouseFilter.staticBodies = false;
+            mouseFilter.kinematicBodies = false;
+            mouseFilter.sensors = false;
+            mouseFilter.ignoreBodies = {player};
+            const bool hitBody = physics.CastRay(GetScreenToWorldRay(GetMousePosition(), camera), 100.0f, mouseFilter, mouseHit);
             if (hitBody && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
                 physics.AddImpulse(mouseHit.body, {0.0f, 3000.0f, 0.0f}, mouseHit.point);
             const Ray footRay{playerPosition, {0.0f, -1.0f, 0.0f}};
             RJ::RayHit footHit;
-            const bool hitBelowPlayer = physics.CastRay(footRay, 5.0f, footHit, player);
+            RJ::QueryFilter footFilter;
+            footFilter.sensors = false;
+            footFilter.ignoreBodies = {player};
+            const bool hitBelowPlayer = physics.CastRay(footRay, 5.0f, footFilter, footHit);
 
             BeginDrawing();
             ClearBackground(RAYWHITE);
@@ -610,6 +622,11 @@ int main(int argc, char** argv)
                 DrawLine3D(mouseHit.point, Vector3Add(mouseHit.point, mouseHit.normal), RED);
             }
             DrawCubeWiresV(sensorSettings.position, sensorSettings.size, ORANGE);
+            if (showPhysicsDebug) {
+                RJ::DebugDrawSettings settings;
+                settings.contacts = true;
+                physics.DrawDebug(settings);
+            }
             EndMode3D();
             DrawRectangle(12, 12, 750, 196, Fade(RAYWHITE, 0.9f));
             DrawText("rayjolt | physics test stage", 20, 20, 24, DARKGRAY);
@@ -618,7 +635,7 @@ int main(int argc, char** argv)
             DrawText(TextFormat("Area: %s | %s", currentArea, groundText), 20, 108, 18, DARKGRAY);
             DrawText(TextFormat("Position: %.2f, %.2f, %.2f | %s", playerPosition.x, playerPosition.y, playerPosition.z,
                 physics.IsCrouching(player) ? "Crouching" : "Standing"), 20, 132, 18, DARKGRAY);
-            DrawText("R: full reset   F1: physics controls   Esc: exit", 20, 156, 18, DARKGRAY);
+            DrawText("R: full reset   F1: controls   F2: collision shapes   Esc: exit", 20, 156, 18, DARKGRAY);
             DrawText(TextFormat("Contacts: Begin %d   Stay %d   End %d | Orange sensor: %d",
                 contactBegins, contactStays, contactEnds, sensorEvents), 20, 180, 18, DARKGRAY);
             DrawFPS(GetScreenWidth() - 100, 20);

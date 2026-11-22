@@ -512,6 +512,15 @@ namespace RayJolt{
 		Vector3 velocity = {};
 	};
 
+	struct QueryFilter {
+		bool staticBodies = true;
+		bool dynamicBodies = true;
+		bool kinematicBodies = true;
+		bool sensors = true;
+		std::uint32_t categoryMask = ~std::uint32_t(0);
+		std::vector<BodyHandle> ignoreBodies;
+	};
+
 	struct RayHit {
 		BodyHandle body;
 		Vector3 point = {};
@@ -525,6 +534,13 @@ namespace RayJolt{
 
 
 	//raw initialize jolt.
+	struct DebugDrawSettings {
+		bool shapes = true;
+		bool bounds = false;
+		bool contacts = false;
+		float contactNormalLength = 0.3f;
+	};
+
 	struct WorldSettings {
 		int maxBodies = 1024;
 		int maxBodyPairs = 1024;
@@ -571,6 +587,7 @@ namespace RayJolt{
 		bool Init(const WorldSettings& settings = {});
 		void Update(float deltaTime,int collisionStep = 1);
 		void Shutdown();
+		void DrawDebug(const DebugDrawSettings& settings = {}) const;
 		std::vector<ContactEvent> GetContactEvents() const;
 		bool IsSensor(BodyHandle body) const;
 		void SetGravity(Vector3 gravity);
@@ -607,6 +624,7 @@ namespace RayJolt{
 		std::vector<BodyHandle> GetRagdollBodies(RagdollHandle ragdoll) const;
 		bool DestroyRagdoll(RagdollHandle& ragdoll);
 #ifdef RJ_WITH_RFBX
+		BodyHandle CreateStaticBodyFromRfbx(const RfbxModel& model, const StaticMeshDesc& desc = {});
 		RfbxBoneCollider CreateRfbxBoneCollider(const RfbxInstance& instance, const RfbxBoneColliderDesc& desc,
 			Matrix modelTransform = MatrixIdentity());
 		bool UpdateRfbxBoneCollider(const RfbxBoneCollider& collider, const RfbxInstance& instance,
@@ -640,6 +658,9 @@ namespace RayJolt{
 		void AddTorque(BodyHandle body, Vector3 torque);
 		void AddAngularImpulse(BodyHandle body, Vector3 impulse);
 		bool CastRay(const Ray& ray, float maxDistance, RayHit& hit, BodyHandle ignoreBody = {}) const;
+		bool CastRay(const Ray& ray, float maxDistance, const QueryFilter& filter, RayHit& hit) const;
+		void SetQueryCategory(BodyHandle body, std::uint32_t category);
+		std::uint32_t GetQueryCategory(BodyHandle body) const;
 		bool ContainsBody(BodyHandle body) const;
 		bool DestroyBody(BodyHandle& body);
 
@@ -674,6 +695,7 @@ namespace RayJolt{
 		const std::uint64_t worldId_;
 		std::uint64_t nextBodyGeneration_ = 1;
 		std::unordered_map<std::uint32_t, std::uint64_t> bodyGenerations_;
+		std::unordered_map<std::uint32_t, std::uint32_t> queryCategories_;
 		bool initialized_ = false;
 		WorldSettings settings_;
 		struct RagdollState {

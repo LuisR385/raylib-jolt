@@ -14,6 +14,7 @@
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
+#include <Jolt/Physics/Collision/TransformedShape.h>
 #include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
 #include <Jolt/Physics/Collision/GroupFilterTable.h>
 #include <Jolt/Physics/Body/BodyLockMulti.h>
@@ -92,6 +93,16 @@ namespace RayJolt {
     }
 
 #ifdef RJ_WITH_RFBX
+    BodyHandle PhysicsWorld::CreateStaticBodyFromRfbx(const RfbxModel& model, const StaticMeshDesc& desc) {
+        TriangleMeshData mesh;
+        const auto result = BuildRfbxCollisionMesh(model, mesh);
+        if (!result.valid) {
+            TraceLog(LOG_WARNING, "Could not create static FBX body: %s", result.message.c_str());
+            return {};
+        }
+        return CreateStaticMesh(mesh, desc);
+    }
+
     MeshValidationResult BuildRfbxCollisionMesh(const RfbxModel& model, TriangleMeshData& output, Matrix transform) {
         output = {};
         if (!model.valid || !model.nodes || !model.meshes)
@@ -454,7 +465,52 @@ namespace RayJolt {
             bodies.DestroyBody(id);
         }
         bodyGenerations_.clear();
+        queryCategories_.clear();
         contactListener_.Reset();
+    }
+
+    void PhysicsWorld::DrawDebug(const DebugDrawSettings& settings) const {
+        if (!initialized_ || !IsWindowReady())
+            return;
+        JPH::BodyIDVector ids;
+        physicsSystem_.GetBodies(ids);
+        for (const auto& id : ids) {
+            JPH::BodyLockRead lock(physicsSystem_.GetBodyLockInterface(), id);
+            if (!lock.Succeeded())
+                continue;
+            const auto& body = lock.GetBody();
+            const Color color = body.IsSensor() ? ORANGE : body.IsStatic() ? BLUE :
+                body.IsKinematic() ? PURPLE : body.IsActive() ? GREEN : GRAY;
+            if (settings.bounds)
+                DrawBoundingBox(Detail::ToRaylibBoundingBox(body.GetWorldSpaceBounds()), color);
+            if (settings.shapes) {
+                const auto shape = body.GetTransformedShape();
+                JPH::TransformedShape::GetTrianglesContext context;
+                shape.GetTrianglesStart(context, body.GetWorldSpaceBounds(), JPH::RVec3::sZero());
+                constexpr int batch = JPH::Shape::cGetTrianglesMinTrianglesRequested;
+                JPH::Float3 vertices[batch * 3];
+                int count;
+                while ((count = shape.GetTrianglesNext(context, batch, vertices)) > 0) {
+                    for (int i = 0; i < count; ++i) {
+                        const auto& a = vertices[i * 3];
+                        const auto& b = vertices[i * 3 + 1];
+                        const auto& c = vertices[i * 3 + 2];
+                        DrawLine3D({a.x, a.y, a.z}, {b.x, b.y, b.z}, color);
+                        DrawLine3D({b.x, b.y, b.z}, {c.x, c.y, c.z}, color);
+                        DrawLine3D({c.x, c.y, c.z}, {a.x, a.y, a.z}, color);
+                    }
+                }
+            }
+        }
+        if (settings.contacts && std::isfinite(settings.contactNormalLength) && settings.contactNormalLength >= 0) {
+            for (const auto& event : GetContactEvents()) {
+                if (!event.hasContactPoint)
+                    continue;
+                DrawSphere(event.point, 0.025f, RED);
+                DrawLine3D(event.point, Vector3Add(event.point,
+                    Vector3Scale(event.normal, settings.contactNormalLength)), RED);
+            }
+        }
     }
 
     void PhysicsWorld::SetGravity(Vector3 gravity) {
@@ -707,6 +763,7 @@ namespace RayJolt {
                 characters_.erase(it);
                 jumpingCharacters_.erase(std::remove(jumpingCharacters_.begin(), jumpingCharacters_.end(), id), jumpingCharacters_.end());
                 bodyGenerations_.erase(id.GetIndexAndSequenceNumber());
+                queryCategories_.erase(id.GetIndexAndSequenceNumber());
                 body = BodyHandle{};
                 return true;
             }
@@ -715,6 +772,7 @@ namespace RayJolt {
             bodies.RemoveBody(id);
         bodies.DestroyBody(id);
         bodyGenerations_.erase(id.GetIndexAndSequenceNumber());
+        queryCategories_.erase(id.GetIndexAndSequenceNumber());
         body = BodyHandle{};
         return true;
     }
@@ -1161,9 +1219,30 @@ namespace RayJolt {
     }
 
     bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, RayHit& hit, BodyHandle ignoreBody) const {
+        QueryFilter filter;
+        if (ignoreBody != BodyHandle{})
+            filter.ignoreBodies.push_back(ignoreBody);
+        return CastRay(ray, maxDistance, filter, hit);
+    }
+
+    void PhysicsWorld::SetQueryCategory(BodyHandle body, std::uint32_t category) {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        queryCategories_[body.GetJoltID().GetIndexAndSequenceNumber()] = category;
+    }
+
+    std::uint32_t PhysicsWorld::GetQueryCategory(BodyHandle body) const {
+        if (!ContainsBody(body))
+            throw std::invalid_argument("Body does not exist in this world");
+        const auto found = queryCategories_.find(body.GetJoltID().GetIndexAndSequenceNumber());
+        return found == queryCategories_.end() ? 1u : found->second;
+    }
+
+    bool PhysicsWorld::CastRay(const Ray& ray, float maxDistance, const QueryFilter& filter, RayHit& hit) const {
         hit = {};
-        if (ignoreBody != BodyHandle{} && !ContainsBody(ignoreBody))
-            return false;
+        for (auto body : filter.ignoreBodies)
+            if (!ContainsBody(body))
+                return false;
         if (!std::isfinite(maxDistance) || maxDistance <= 0.0f ||
             !std::isfinite(ray.position.x) || !std::isfinite(ray.position.y) ||
             !std::isfinite(ray.position.z) || !std::isfinite(ray.direction.x) ||
@@ -1179,7 +1258,26 @@ namespace RayJolt {
             float(ray.direction.z / length * maxDistance));
         const JPH::RRayCast joltRay(Detail::ToJoltRVec3(ray.position), displacement);
         JPH::RayCastResult result;
-        const JPH::IgnoreSingleBodyFilter bodyFilter(ignoreBody.GetJoltID());
+        class Filter final : public JPH::BodyFilter {
+        public:
+            Filter(const PhysicsWorld& world, const QueryFilter& filter) : world_(world), filter_(filter) {}
+            bool ShouldCollide(const JPH::BodyID& id) const override {
+                const auto handle = world_.FindBodyHandle(id);
+                if (!handle.IsValid() || std::find(filter_.ignoreBodies.begin(), filter_.ignoreBodies.end(), handle) != filter_.ignoreBodies.end())
+                    return false;
+                const auto found = world_.queryCategories_.find(id.GetIndexAndSequenceNumber());
+                const auto category = found == world_.queryCategories_.end() ? 1u : found->second;
+                return (category & filter_.categoryMask) != 0;
+            }
+            bool ShouldCollideLocked(const JPH::Body& body) const override {
+                if (body.IsSensor() && !filter_.sensors)
+                    return false;
+                return body.IsStatic() ? filter_.staticBodies : body.IsKinematic() ? filter_.kinematicBodies : filter_.dynamicBodies;
+            }
+        private:
+            const PhysicsWorld& world_;
+            const QueryFilter& filter_;
+        } bodyFilter(*this, filter);
         if (!physicsSystem_.GetNarrowPhaseQuery().CastRay(joltRay, result, {}, {}, bodyFilter))
             return false;
 
